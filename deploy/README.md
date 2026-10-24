@@ -53,6 +53,31 @@ build time and no CORS.
 **Don't serve out of `/root`.** It's mode 0700 and nginx runs as `www-data`, so every
 static file 403s. Hence `/srv`.
 
+## Backend-only mode (no nginx)
+
+If the box hosts just the API and the UI runs from a dev server elsewhere, skip nginx
+and certbot entirely:
+
+```bash
+sudo systemctl disable --now nginx
+sudo mkdir -p /etc/systemd/system/ed-backend.service.d
+sudo cp deploy/direct-bind.conf /etc/systemd/system/ed-backend.service.d/
+sudo systemctl daemon-reload && sudo systemctl restart ed-backend
+```
+
+Open TCP 8000 instead of 80/443, set
+`CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]` in
+`/etc/emotional-damage/backend.env`, and run the frontend against it:
+
+```bash
+cd frontend && BACKEND_URL=http://<ip>:8000 npm run dev
+```
+
+No TLS is needed here, and that is not a shortcut: `vite.config.ts` proxies `/api` and
+`/ws` server-side, so the browser only ever talks to `http://localhost:5173` — which is
+a secure context, so the camera works. The HTTPS requirement comes back the moment you
+serve the page itself from this host.
+
 ## No domain yet
 
 Let's Encrypt will not issue for a bare IP, so point a free wildcard-DNS hostname at it
