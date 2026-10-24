@@ -14,6 +14,9 @@ class RoundCtx:
     player_id: str
     round_no: int
     prompt: str
+    # The label this round is asking for. A real processor can classify against it;
+    # the engine compares it to the returned label to decide correctness either way.
+    target: str
 
 
 @runtime_checkable

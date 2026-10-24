@@ -2,14 +2,23 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import EngineDep
 from app.game.engine import GameError
-from app.models import CreateRoomRequest, GameState, JoinRoomRequest, PlayerSession
+from app.models import (
+    CreateRoomRequest,
+    GameState,
+    JoinRoomRequest,
+    LeaveRoomResponse,
+    PlayerSession,
+)
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
 
 @router.post("", response_model=PlayerSession, status_code=201)
 async def create_room(body: CreateRoomRequest, engine: EngineDep) -> PlayerSession:
-    room, host_id = await engine.create_room(body.name)
+    try:
+        room, host_id = await engine.create_room(body.name)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return PlayerSession(
         room_id=room.state.room_id,
         join_code=room.state.join_code,
@@ -22,7 +31,7 @@ async def create_room(body: CreateRoomRequest, engine: EngineDep) -> PlayerSessi
 async def join_room(room_id: str, body: JoinRoomRequest, engine: EngineDep) -> PlayerSession:
     """`room_id` accepts either a full room id or the short join code."""
     try:
-        room = engine.resolve(room_id)
+        room = engine.resolve(body.join_code or room_id)
         player_id = await engine.join(room.state.room_id, body.name)
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -50,3 +59,27 @@ async def start_game(room_id: str, player_id: str, engine: EngineDep) -> dict[st
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"status": "started"}
+
+
+@router.post("/{room_id}/restart", status_code=200)
+async def restart_game(room_id: str, player_id: str, engine: EngineDep) -> dict[str, str]:
+    """Host only, after `game_over`: clears every score and returns the room to its lobby.
+
+    The next game is not started here -- the lobby is what lets new players in between
+    games, and the host starts it with `POST /start` as usual.
+    """
+    try:
+        await engine.restart_game(room_id, player_id)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {"status": "lobby"}
+
+
+@router.post("/{room_id}/leave", response_model=LeaveRoomResponse)
+async def leave_room(room_id: str, player_id: str, engine: EngineDep) -> LeaveRoomResponse:
+    """Give up this player's seat. The last player out destroys the room."""
+    try:
+        destroyed = await engine.leave(room_id, player_id)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return LeaveRoomResponse(room_destroyed=destroyed)

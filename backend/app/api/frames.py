@@ -37,28 +37,29 @@ async def upload_frame(
         raise HTTPException(413, f"frame exceeds {settings.max_frame_bytes} bytes")
 
     try:
-        submission = await engine.submit_frame(room_id, player_id, size=len(data))
+        accepted = await engine.submit_frame(room_id, player_id, size=len(data))
     except GameError as exc:
         if exc.status_code == 429:
             response.status_code = status.HTTP_200_OK
             return {"skipped": True, "reason": "rate_limited"}
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    room = engine.require_room(room_id)
-    assert room.state.round is not None  # submit_frame enforces phase == ROUND
+    submission = accepted.submission
     path = await media.write(room_id, submission.id, data)
 
-    accepted = frames.submit(
+    queued = await frames.submit(
         FrameJob(
             room_id=room_id,
             player_id=player_id,
             submission_id=submission.id,
             round_no=submission.round_no,
-            prompt=room.state.round.prompt,
+            prompt=accepted.prompt,
+            target=accepted.target,
             path=path,
         )
     )
-    if not accepted:
+    if not queued:
+        # The queue has already settled the submission; nothing is left pending.
         response.status_code = status.HTTP_200_OK
         return {"skipped": True, "reason": "overloaded"}
 
