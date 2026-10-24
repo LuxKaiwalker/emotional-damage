@@ -21,14 +21,13 @@ class Prompt:
 
 
 PROMPTS = (
-    "Look Angry, like you just saw your ex with someone else",
-    "look contempt",
-    "look disgusted",
-    "Look disappointed",
-    "Look scared",
-    "Look sad, like you just a massive hackathon because someone nuked the repo",
-    "look surprised! like you just saw a ghost",
-
+    Prompt("angry", "Look Angry, like you just saw your ex with someone else"),
+    Prompt("contempt", "look contempt"),
+    Prompt("disgusted", "look disgusted"),
+    Prompt("disappointed", "Look disappointed"),
+    Prompt("scared", "Look scared"),
+    Prompt("sad", "Look sad, like you just a massive hackathon because someone nuked the repo"),
+    Prompt("surprised", "look surprised! like you just saw a ghost"),
 )
 
 # Every label the game knows about. `app.processing.dummy` draws its fake reads from this
