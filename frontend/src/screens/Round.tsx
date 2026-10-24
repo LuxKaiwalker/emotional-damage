@@ -37,7 +37,7 @@ function Webcam({
   ready,
   error,
 }: {
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   ready: boolean;
   error: string | null;
 }) {
