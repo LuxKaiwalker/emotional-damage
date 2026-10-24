@@ -40,9 +40,7 @@ sudo ./deploy/install.sh your.domain          # only if deploy/ changed
 
 **HTTPS is mandatory.** `getUserMedia` requires a secure context. Over plain HTTP on
 anything but `localhost` the camera fails silently — no frames, no scoring, usually no
-visible error. Run certbot. With no domain, the fallbacks are a self-signed cert the
-players click through, or Chrome launched with
-`--unsafely-treat-insecure-origin-as-secure=http://<ip> --user-data-dir=/tmp/chrome-dev`.
+visible error. Run certbot. See "No domain yet" below if you only have an IP.
 
 **One backend worker.** Rooms, players and scores live in process memory behind a
 per-room `asyncio.Lock`. `--workers 2` is two separate game worlds. Scaling out means
@@ -54,6 +52,36 @@ build time and no CORS.
 
 **Don't serve out of `/root`.** It's mode 0700 and nginx runs as `www-data`, so every
 static file 403s. Hence `/srv`.
+
+## No domain yet
+
+Let's Encrypt will not issue for a bare IP, so point a free wildcard-DNS hostname at it
+instead. `nip.io` and `sslip.io` resolve `<any-ip>.<domain>` straight to that IP with no
+signup, and certbot treats the result like any other name:
+
+```bash
+sudo ./deploy/install.sh 203.0.113.9.nip.io
+sudo certbot --nginx -d 203.0.113.9.nip.io
+```
+
+Port 80 has to be reachable from the internet for the HTTP-01 challenge to land.
+
+If Let's Encrypt refuses those hostnames (they are shared and occasionally
+rate-limited), the fallbacks, in order of how well they hold up in front of real
+players:
+
+1. **A free subdomain** from DuckDNS or similar, then certbot as above. Stable, and it
+   survives an IP change.
+2. **A Cloudflare quick tunnel** — `cloudflared tunnel --url http://localhost:80` prints
+   a `https://*.trycloudflare.com` URL with a valid certificate. Works without touching
+   DNS, and because the client derives its API and WebSocket URLs from
+   `location.host`, no rebuild is needed. The URL changes every restart.
+3. **A self-signed certificate.** The origin still counts as secure once each player
+   clicks through the interstitial, which is a bad thing to ask a room full of people
+   to do, but it does work.
+
+`--unsafely-treat-insecure-origin-as-secure=http://<ip>` also works, but only for
+browsers you launch yourself, so it is no use for players on their own phones.
 
 ## SmartSpectra sidecar (optional)
 
