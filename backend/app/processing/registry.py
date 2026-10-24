@@ -1,11 +1,25 @@
+from typing import Callable
+
 from app.processing.base import Processor
 from app.processing.custom import CustomProcessor
 from app.processing.dummy import DummyProcessor
 
-_PROCESSORS: dict[str, type[Processor]] = {
+# Name -> zero-arg factory. Factories rather than classes so a processor that needs a
+# heavy or optional SDK is only imported when it is the one actually selected: a stale
+# virtualenv missing `google-genai` must not stop PROCESSOR=dummy from running.
+_PROCESSORS: dict[str, Callable[[], Processor]] = {
     DummyProcessor.name: DummyProcessor,
     CustomProcessor.name: CustomProcessor,
 }
+
+
+def _make_gemini() -> Processor:
+    from app.processing.gemini import GeminiProcessor
+
+    return GeminiProcessor()
+
+
+_PROCESSORS["gemini"] = _make_gemini
 
 
 def register(processor: type[Processor]) -> None:
@@ -23,6 +37,7 @@ def known() -> list[str]:
 
 def get_processor(name: str) -> Processor:
     try:
-        return _PROCESSORS[name]()
+        factory = _PROCESSORS[name]
     except KeyError:
         raise ValueError(f"unknown processor {name!r} (known: {', '.join(known())})") from None
+    return factory()

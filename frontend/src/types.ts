@@ -35,6 +35,13 @@ export interface Player {
   rounds_correct: number;
   joined_at: string;
   last_frame_at: string | null;
+  /**
+   * Latest client-reported vitals. Visible to every client and scored by none: the
+   * numbers come from the player's own browser, so the server cannot verify them.
+   * See backend/app/api/vitals.py.
+   */
+  vitals: Record<string, number> | null;
+  vitals_at: string | null;
 }
 
 export interface Round {
@@ -47,6 +54,13 @@ export interface Round {
   submissions: Record<string, Submission>;
   /** player_id -> points gained, filled in when the server ends the round. */
   points_awarded: Record<string, number>;
+  /**
+   * Uncle Damage's line for this round, and the id of its audio. Both start null and are
+   * patched in once generation finishes, so treat them as arriving late. `audio_id` stays
+   * null when no TTS key is configured -- the line is still worth showing as text.
+   */
+  voice_line: string | null;
+  audio_id: string | null;
 }
 
 export interface GameConfig {
@@ -96,6 +110,12 @@ export interface LeaveRoomResponse {
   status: "left";
   /** True when that was the last player: the room and its game are gone. */
   room_destroyed: boolean;
+}
+
+export interface VitalsAccepted {
+  status: "recorded";
+  /** Always false. The endpoint exists to show the read, not to pay for it. */
+  scored: false;
 }
 
 export type FrameUploadResult =

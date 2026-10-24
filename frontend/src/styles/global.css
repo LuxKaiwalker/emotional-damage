@@ -421,6 +421,9 @@ button, input { font-family: inherit; color: var(--ink); }
 }
 
 
+/* The scored target, under Uncle Damage's generated line. */
+.announcer__target { margin: 4px 0 0; font-size: 14px; font-weight: 600; opacity: 0.75; }
+
 /* --- name entry (create / join) ------------------------------------- */
 .name-form { display: flex; flex-direction: column; gap: 14px; align-items: center; width: 100%; }
 .name-input {

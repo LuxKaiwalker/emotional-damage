@@ -1,7 +1,9 @@
 import { useFollowServerPhase, useGame } from "../game";
 import { useFrameUploader } from "../hooks/useFrameUploader";
+import { useNarration } from "../hooks/useNarration";
 import { useServerCountdown } from "../hooks/useServerCountdown";
 import { useSmartSpectra } from "../hooks/useSmartSpectra";
+import { useVitalsReporter } from "../hooks/useVitalsReporter";
 import { UncleDamage } from "../components/art";
 import { LeaveGame } from "../components/LeaveGame";
 import {
@@ -46,7 +48,6 @@ export function Round() {
 
   // Anchored to the server's own round deadline, not a local timer.
   const left = useServerCountdown(round?.ends_at, clockOffsetMs);
-  const speaking = left > 0;
 
   const spectra = useSmartSpectra();
 
@@ -59,6 +60,17 @@ export function Round() {
     enabled: spectra.ready && !!session,
     capture: spectra.captureFrame,
   });
+
+  // Vitals go to the server so the whole room can see them. They are not scoring input.
+  useVitalsReporter({
+    roomId: session?.room_id ?? null,
+    playerId: session?.player_id ?? null,
+    metrics: spectra.measurements,
+  });
+
+  // Uncle Damage speaks as soon as the generated line lands on the round.
+  const narration = useNarration(round?.audio_id);
+  const speaking = left > 0 && !!round?.voice_line;
 
   const m = spectra.measurements;
   const result = mySubmission?.result ?? null;
@@ -116,8 +128,15 @@ export function Round() {
               ))}
             </div>
           </div>
-          {/* The real prompt the server is scoring this round against. */}
-          <p className="announcer__prompt">"{round?.prompt ?? "…"}"</p>
+          {/* The generated line once it lands, with the prompt the server is actually
+              scoring against underneath it. Before then the prompt is the line. */}
+          <p className="announcer__prompt">"{round?.voice_line ?? round?.prompt ?? "…"}"</p>
+          {round?.voice_line && (
+            <p className="announcer__target">
+              show us: <b>{round.target}</b>
+              {narration.blocked && " · tap anywhere to hear Uncle Damage"}
+            </p>
+          )}
         </div>
         <Countdown seconds={left} />
       </ChunkyCard>
@@ -130,8 +149,9 @@ export function Round() {
             <h2 id="snitch-title">Presage reads</h2>
           </div>
           <div className="grid2">
-            {/* Pulse and breathing come straight from the SmartSpectra sidecar: a local read
-                that the game server never sees, so it cannot affect scoring. */}
+            {/* Pulse and breathing come from the SmartSpectra sidecar and are forwarded to
+                the server so the whole room can see them -- but they are never scoring
+                input, so a high pulse is worth exactly zero points. */}
             <MetricTile
               label="Pulse"
               value={m?.pulse ?? "--"}

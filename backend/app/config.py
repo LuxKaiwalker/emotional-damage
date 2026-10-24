@@ -40,6 +40,28 @@ class Settings(BaseSettings):
     processor: str = "dummy"
     worker_count: int = 2
     queue_maxsize: int = 64
+    # Vision model for PROCESSOR=gemini. Needs GEMINI_API_KEY.
+    gemini_vision_model: str = "gemini-2.5-flash"
+
+    # --- client-reported vitals ------------------------------------------
+    # Accepted, stored and broadcast, but never an input to scoring: they come from the
+    # player's own browser and nothing can verify them. See app/api/vitals.py.
+    vitals_enabled: bool = True
+    # Cap on one report, so a client cannot grow the snapshot without bound.
+    max_vitals_fields: int = 24
+
+    # --- voice narration --------------------------------------------------
+    # Uncle Damage: Gemini writes the round's line, ElevenLabs speaks it. Both steps are
+    # optional -- without GEMINI_API_KEY the prompt text is spoken as written, and without
+    # ELEVENLABS_API_KEY the line is published as text with no audio.
+    voice_enabled: bool = True
+    voice_ttl_seconds: int = 1800
+
+    # --- third-party keys -------------------------------------------------
+    # Read from the environment or backend/.env. Absent keys disable the feature that
+    # needs them rather than failing the request.
+    gemini_api_key: str | None = None
+    elevenlabs_api_key: str | None = None
 
     # --- media -----------------------------------------------------------
     media_dir: Path = Path(".media")

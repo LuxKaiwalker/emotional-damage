@@ -25,8 +25,9 @@ from typing import NamedTuple
 
 from app.config import Settings
 from app.game.hub import ConnectionManager
-from app.game.prompts import pick_prompt
+from app.game.prompts import Prompt, pick_prompt
 from app.game.store import CodeExhausted, InMemoryRoomStore, Room, new_id
+from app.game.voice import VoiceStudio
 from app.models import (
     EventMessage,
     GameConfig,
@@ -69,11 +70,20 @@ class GameError(Exception):
 
 class GameEngine:
     def __init__(
-        self, store: InMemoryRoomStore, hub: ConnectionManager, settings: Settings
+        self,
+        store: InMemoryRoomStore,
+        hub: ConnectionManager,
+        settings: Settings,
+        voice: VoiceStudio | None = None,
     ) -> None:
         self.store = store
         self.hub = hub
         self.settings = settings
+        # Optional: without it (or without API keys) rounds simply carry no narration.
+        self.voice = voice
+        # Narration runs outside the round driver, so it is tracked here and cancelled
+        # on shutdown rather than being left to outlive the app.
+        self._voice_tasks: set[asyncio.Task] = set()
 
     # --- lookup ----------------------------------------------------------
 
@@ -291,6 +301,28 @@ class GameEngine:
                 "game_no": state.game_no,
             }))
 
+    # --- vitals ----------------------------------------------------------
+
+    async def record_vitals(
+        self, room_id: str, player_id: str, metrics: dict[str, float]
+    ) -> None:
+        """Store one client-reported vitals sample and broadcast it.
+
+        This is intentionally a dead end as far as the rules are concerned. Nothing in
+        `_end_round`, `_is_correct` or `apply_result` reads `player.vitals`, and nothing
+        should: the numbers are computed in the player's own browser from their own
+        camera, so the server cannot verify them and treating them as scoring input would
+        make points trivially forgeable. They exist so every client can *see* the read.
+        """
+        room = self.require_room(room_id)
+        async with room.lock:
+            player = room.state.players.get(player_id)
+            if player is None:
+                raise GameError("unknown player for this room", status_code=404)
+            player.vitals = metrics
+            player.vitals_at = utcnow()
+            await self._publish(room)
+
     # --- frames ----------------------------------------------------------
 
     async def submit_frame(self, room_id: str, player_id: str, size: int) -> AcceptedFrame:
@@ -448,6 +480,9 @@ class GameEngine:
                 "target": prompt.target,
                 "ends_at": ends_at.isoformat(),
             }))
+            # Fire-and-forget: a Gemini line plus a TTS round trip takes seconds, and the
+            # round's clock has already started. The narration lands via `voice_ready`.
+            self._spawn_narration(room, round_no, prompt)
             return max(0.0, (ends_at - utcnow()).total_seconds())
 
     async def _end_round(self, room: Room) -> None:
@@ -494,6 +529,49 @@ class GameEngine:
             state.players.values(), key=lambda p: (-p.points, p.joined_at)
         )
 
+    # --- narration -------------------------------------------------------
+
+    def _spawn_narration(self, room: Room, round_no: int, prompt: Prompt) -> None:
+        """Start generating this round's spoken line. Must not be awaited by the driver."""
+        if self.voice is None or not self.voice.enabled:
+            return
+        task = asyncio.create_task(
+            self._narrate(room, round_no, prompt),
+            name=f"voice-{room.state.room_id}-r{round_no}",
+        )
+        self._voice_tasks.add(task)
+        task.add_done_callback(self._voice_tasks.discard)
+
+    async def _narrate(self, room: Room, round_no: int, prompt: Prompt) -> None:
+        """Generate the line, then patch it onto the round if that round is still current."""
+        assert self.voice is not None
+        try:
+            narration = await self.voice.narrate(prompt)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Narration is decoration: a failure must never disturb the round.
+            log.warning("narration failed for room %s round %s", room.state.room_id, round_no,
+                        exc_info=True)
+            return
+        if narration is None:
+            return
+
+        async with room.lock:
+            current = room.state.round
+            # Generation outlived its round (a short round, or a slow vendor). Dropping it
+            # is correct: narrating round 1 over round 2 is worse than silence.
+            if current is None or current.number != round_no:
+                log.info("discarding late narration for round %s", round_no)
+                return
+            current.voice_line = narration.line
+            current.audio_id = narration.audio_id
+            await self._publish(room, EventMessage(kind="voice_ready", payload={
+                "round": round_no,
+                "line": narration.line,
+                "audio_id": narration.audio_id,
+            }))
+
     # --- internals -------------------------------------------------------
 
     async def _publish(self, room: Room, event: EventMessage | None = None) -> None:
@@ -517,6 +595,8 @@ class GameEngine:
             for room in self.store.all()
             if room.task is not None and not room.task.done()
         ]
+        # Narration tasks are not owned by a room, so they are cancelled alongside.
+        tasks.extend(t for t in self._voice_tasks if not t.done())
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

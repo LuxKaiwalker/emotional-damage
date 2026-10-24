@@ -61,6 +61,12 @@ class Player(BaseModel):
     joined_at: datetime = Field(default_factory=utcnow)
     # Server-side only bookkeeping, harmless to expose: drives the rate limiter.
     last_frame_at: datetime | None = None
+    # Latest client-reported vitals (pulse, breathing, ...) and when they landed.
+    # Deliberately NOT an input to scoring: the numbers are produced in the player's own
+    # browser and the server cannot verify them, so letting them pay out points would
+    # make the game trivially cheatable. Stored so every client can see them.
+    vitals: dict[str, float] | None = None
+    vitals_at: datetime | None = None
 
 
 class Round(BaseModel):
@@ -74,6 +80,12 @@ class Round(BaseModel):
     submissions: dict[str, Submission] = Field(default_factory=dict)
     # Filled in when the server ends the round: player_id -> points gained.
     points_awarded: dict[str, int] = Field(default_factory=dict)
+    # Uncle Damage's line for this round, and the id of its audio in the voice store.
+    # Both start None and are patched in once generation finishes: a TTS round trip takes
+    # seconds, and the round is never delayed waiting for it. `audio_id` stays None when
+    # no TTS key is configured, so the line can still be shown as text.
+    voice_line: str | None = None
+    audio_id: str | None = None
 
 
 class GameConfig(BaseModel):
@@ -132,6 +144,17 @@ class CreateRoomRequest(BaseModel):
 class JoinRoomRequest(BaseModel):
     name: str = Field(min_length=1, max_length=32)
     join_code: str | None = None
+
+
+class VitalsReport(BaseModel):
+    """One client-reported vitals sample.
+
+    Numbers only, and the route caps how many: this is untrusted input that ends up in
+    every snapshot, so it has to stay small and flat.
+    """
+
+    player_id: str
+    metrics: dict[str, float]
 
 
 class PlayerSession(BaseModel):

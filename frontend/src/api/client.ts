@@ -1,4 +1,10 @@
-import type { FrameUploadResult, GameState, LeaveRoomResponse, PlayerSession } from "../types";
+import type {
+  FrameUploadResult,
+  GameState,
+  LeaveRoomResponse,
+  PlayerSession,
+  VitalsAccepted,
+} from "../types";
 
 // Default to relative paths so the vite dev proxy handles it; override for a deployed build.
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
@@ -76,5 +82,18 @@ export const api = {
     });
   },
 
+  /**
+   * Report one vitals sample. Accepted in any phase and scored in none -- the server
+   * stores it so the whole room can see the read, never to award points.
+   */
+  reportVitals: (roomId: string, playerId: string, metrics: Record<string, number>) =>
+    request<VitalsAccepted>(
+      `/rooms/${encodeURIComponent(roomId)}/vitals`,
+      json({ player_id: playerId, metrics }),
+    ),
+
   mediaUrl: (submissionId: string) => `${API_BASE}/media/${encodeURIComponent(submissionId)}`,
+
+  /** Audio for a round's narration. 404 is ordinary: it expires on a TTL. */
+  voiceUrl: (audioId: string) => `${API_BASE}/voice/${encodeURIComponent(audioId)}`,
 };
