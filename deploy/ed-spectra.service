@@ -13,6 +13,11 @@ WorkingDirectory=/srv/emotional-damage/frontend
 EnvironmentFile=/etc/emotional-damage/spectra.env
 ExecStart=/usr/bin/node src/smart-spectra/server.js
 
+# The SDK caches models under $XDG_CACHE_HOME/SmartSpectraSDK, falling back to
+# ~/.cache -- and edgame has no home. systemd creates and chowns this directory.
+CacheDirectory=emotional-damage-spectra
+Environment=XDG_CACHE_HOME=/var/cache/emotional-damage-spectra
+
 Restart=always
 RestartSec=2
 

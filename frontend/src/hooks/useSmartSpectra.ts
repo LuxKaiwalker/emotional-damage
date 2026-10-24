@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const WS_URL = import.meta.env.VITE_SPECTRA_WS_URL ?? "ws://localhost:3001";
 
+const PROCESSING_LABELS: Record<number, string> = {
+  2: "Starting vitals...",
+  3: "Measuring...",
+  4: "Vitals stopping...",
+  5: "Vitals error",
+};
+
 /** Matches the old useCamera default: small enough to upload twice a second. */
 const JPEG_QUALITY = 0.7;
 
@@ -107,11 +114,15 @@ export function useSmartSpectra(): Spectra {
         socket = new WebSocket(WS_URL);
         socket.binaryType = "arraybuffer";
 
+        // Set when the sidecar explains why it is hanging up, so the close that follows
+        // does not overwrite the reason with a generic "offline".
+        let fatal: string | null = null;
+
         socket.onopen = () => setStatus("Connected");
         // The vitals sidecar is optional; say so rather than looking broken.
-        socket.onerror = () => setStatus("Vitals offline");
+        socket.onerror = () => setStatus(fatal ?? "Vitals offline");
         socket.onclose = () => {
-          if (!stopped) setStatus("Vitals offline");
+          if (!stopped) setStatus(fatal ?? "Vitals offline");
         };
 
         socket.onmessage = (event) => {
@@ -124,11 +135,14 @@ export function useSmartSpectra(): Spectra {
           } else if (msg.type === "validation") {
             setValidation(msg.hint || "");
           } else if (msg.type === "error") {
+            if (msg.fatal) fatal = msg.message;
             setStatus(msg.message);
             // Code 11 = timestamp gap; the session is unusable, so start over.
             if (msg.code === 11) restart();
           } else if (msg.type === "status") {
-            setStatus(`Processing status: ${msg.status}`);
+            // ProcessingStatus from the SDK; idle and uninitialized say nothing useful.
+            const label = PROCESSING_LABELS[msg.status];
+            if (label) setStatus(label);
           }
         };
 

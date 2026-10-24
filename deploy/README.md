@@ -42,6 +42,8 @@ SMARTSPECTRA_API_KEY=
 # Exact match against the browser's Origin header. No trailing slash.
 WEB_ORIGIN=https://<domain>
 PORT=3001
+# Presage blocks this box's IP; see "Presage and the proxy" below.
+HTTPS_PROXY=socks5h://127.0.0.1:1080
 ENV
 sudo chmod 0640 /etc/emotional-damage/*.env
 
@@ -69,6 +71,31 @@ Let's Encrypt will not issue for a bare IP. `nip.io` and `sslip.io` resolve
 other name, so use `<ip>.nip.io` as `<domain>` above. If Let's Encrypt refuses it (the
 names are shared and occasionally rate-limited), a free DuckDNS subdomain works the
 same way and survives an IP change.
+
+## Presage and the proxy
+
+Presage's API (`cont-api.physiology.presagetech.com`) refuses this box at its load
+balancer: every request, keyed or not, gets a bare `403 Forbidden` HTML page from
+`awselb/2.0`, while the same request from a home connection reaches the API. The key
+is never even checked. Without a way out, the SDK stops the session before it starts
+and the browser shows "Vitals unavailable: Presage did not authorize this session."
+
+The SDK uses an embedded libcurl that honours `HTTPS_PROXY`, so its traffic can leave
+through a machine Presage doesn't block. From that machine, open a reverse SOCKS
+tunnel to this box:
+
+```bash
+ssh -N -R 1080 root@<this box>     # OpenSSH 7.6+, including Windows' built-in client
+```
+
+That listens on this box's loopback only, which is what `spectra.env` points at. No
+inbound port is opened on either side. Vitals work for as long as the tunnel is up;
+for an always-on setup, run it from a home server under `autossh` or a systemd unit.
+To check the route, run this on the box (403 = blocked, 405 = reached the API):
+
+```bash
+curl -sI --proxy socks5h://127.0.0.1:1080 https://cont-api.physiology.presagetech.com/ | head -1
+```
 
 ## Check it
 
