@@ -40,5 +40,6 @@ async def room_socket(websocket: WebSocket, room_id: str, player_id: str) -> Non
     except Exception:
         log.debug("socket error in room %s", room_id, exc_info=True)
     finally:
+        # Both calls tolerate a room that was destroyed while this socket was open.
         hub.remove(room.state.room_id, websocket)
         await engine.set_connected(room.state.room_id, player_id, False)

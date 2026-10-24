@@ -8,6 +8,7 @@ from app.capture.media import MediaStore
 from app.capture.queue import FrameQueue
 from app.config import Settings
 from app.game.engine import GameEngine
+from app.game.store import InMemoryRoomStore
 
 
 def get_engine(request: Request) -> GameEngine:
@@ -26,7 +27,12 @@ def get_config(request: Request) -> Settings:
     return request.app.state.settings
 
 
+def get_store(request: Request) -> InMemoryRoomStore:
+    return request.app.state.store
+
+
 EngineDep = Annotated[GameEngine, Depends(get_engine)]
 FrameQueueDep = Annotated[FrameQueue, Depends(get_frames)]
 MediaDep = Annotated[MediaStore, Depends(get_media)]
 SettingsDep = Annotated[Settings, Depends(get_config)]
+RoomStoreDep = Annotated[InMemoryRoomStore, Depends(get_store)]

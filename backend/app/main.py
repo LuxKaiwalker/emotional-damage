@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import frames, rooms, ws
-from app.api.deps import FrameQueueDep, SettingsDep
+from app.api.deps import FrameQueueDep, RoomStoreDep, SettingsDep
 from app.capture.media import MediaStore
 from app.capture.queue import FrameQueue
 from app.config import Settings, get_settings
@@ -40,12 +40,16 @@ async def lifespan(app: FastAPI):
     app.state.frames = queue
 
     queue.start()
-    reaper = asyncio.create_task(media.reap_forever(), name="media-reaper")
+    reapers = [
+        asyncio.create_task(media.reap_forever(), name="media-reaper"),
+        asyncio.create_task(engine.reap_empty_rooms_forever(), name="room-reaper"),
+    ]
     try:
         yield
     finally:
-        reaper.cancel()
-        await asyncio.gather(reaper, return_exceptions=True)
+        for reaper in reapers:
+            reaper.cancel()
+        await asyncio.gather(*reapers, return_exceptions=True)
         await queue.stop()
         await engine.shutdown()
 
@@ -71,12 +75,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ws.router)
 
     @app.get("/api/health", tags=["ops"])
-    async def health(queue: FrameQueueDep, settings: SettingsDep) -> dict:
+    async def health(queue: FrameQueueDep, settings: SettingsDep, store: RoomStoreDep) -> dict:
         return {
             "status": "ok",
             "processor": settings.processor,
             "queue_depth": queue.depth,
             "frames_dropped": queue.dropped,
+            "rooms": store.count(),
         }
 
     return app

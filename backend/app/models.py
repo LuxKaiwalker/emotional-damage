@@ -25,7 +25,12 @@ class SubmissionStatus(str, Enum):
 
 
 class ProcessResult(BaseModel):
-    """Whatever your processor decides about one frame. Extend freely via `meta`."""
+    """Whatever your processor decides about one frame. Extend freely via `meta`.
+
+    `label` is the part the game rules read: it is compared against the round's `target`
+    to decide whether the player got it right. `score` and `confidence` are the raw read,
+    kept for the UI and for debugging -- they do not feed the point total.
+    """
 
     score: float
     label: str
@@ -41,13 +46,18 @@ class Submission(BaseModel):
     status: SubmissionStatus = SubmissionStatus.PENDING
     result: ProcessResult | None = None
     error: str | None = None
+    # Set when the result lands: did this frame hit the round's target? `None` while pending.
+    correct: bool | None = None
 
 
 class Player(BaseModel):
     id: str
     name: str
     connected: bool = False
-    score: float = 0.0
+    # One point per round the player got right. Integer on purpose: the whole scoring rule
+    # is "correct answer -> +1", so there is nothing fractional to represent.
+    points: int = 0
+    rounds_correct: int = 0
     joined_at: datetime = Field(default_factory=utcnow)
     # Server-side only bookkeeping, harmless to expose: drives the rate limiter.
     last_frame_at: datetime | None = None
@@ -56,10 +66,14 @@ class Player(BaseModel):
 class Round(BaseModel):
     number: int
     prompt: str
+    # The label a submission must carry to count as correct.
+    target: str
     started_at: datetime
     ends_at: datetime
     # One slot per player: the newest frame wins, which is what you want for live capture.
     submissions: dict[str, Submission] = Field(default_factory=dict)
+    # Filled in when the server ends the round: player_id -> points gained.
+    points_awarded: dict[str, int] = Field(default_factory=dict)
 
 
 class GameConfig(BaseModel):
@@ -67,7 +81,10 @@ class GameConfig(BaseModel):
 
     round_seconds: int
     rounds_per_game: int
+    game_seconds: int
+    points_per_correct: int
     capture_interval_ms: int
+    max_players: int
 
 
 class GameState(BaseModel):
@@ -78,6 +95,13 @@ class GameState(BaseModel):
     round: Round | None = None
     players: dict[str, Player] = Field(default_factory=dict)
     config: GameConfig
+    # Which game this is in the room's life. Bumped by every restart, so a client can tell
+    # "scores reset" from "scores lost".
+    game_no: int = 1
+    # The game timer. Both are None in the lobby; the client anchors its countdown to
+    # `game_ends_at` the same way it anchors the round countdown to `round.ends_at`.
+    game_started_at: datetime | None = None
+    game_ends_at: datetime | None = None
     # Monotonic. Clients drop any snapshot that is not strictly newer than the last seen.
     seq: int = 0
     server_time: datetime = Field(default_factory=utcnow)
@@ -117,6 +141,12 @@ class PlayerSession(BaseModel):
     join_code: str
     player_id: str
     state: GameState
+
+
+class LeaveRoomResponse(BaseModel):
+    status: Literal["left"] = "left"
+    # True when that was the last player: the room and its game are gone.
+    room_destroyed: bool
 
 
 class FrameAccepted(BaseModel):

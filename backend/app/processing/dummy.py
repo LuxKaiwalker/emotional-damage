@@ -1,17 +1,21 @@
 import asyncio
 import hashlib
 
+from app.game.prompts import TARGET_LABELS
 from app.models import ProcessResult
 from app.processing.base import Processor, RoundCtx
 
-LABELS = ("neutral", "smiling", "surprised", "squinting", "dramatic")
+# Drawn from the game's own vocabulary: a label outside it could never match a round target,
+# so a placeholder that invented its own would score zero points forever.
+LABELS = TARGET_LABELS
 
 
 class DummyProcessor(Processor):
     """Deterministic placeholder: same bytes in, same score out.
 
-    Derives a stable pseudo-score from the frame digest so tests can assert on it and
-    the UI has something that visibly moves. Replace with a real model via PROCESSOR=custom.
+    Derives a stable pseudo-label from the frame digest so tests can assert on it and the
+    UI has something that visibly moves. The label is what the engine scores against the
+    round target. Replace with a real model via PROCESSOR=custom.
     """
 
     name = "dummy"
@@ -37,5 +41,6 @@ class DummyProcessor(Processor):
                 "processor": self.name,
                 "frame_bytes": len(frame),
                 "prompt": ctx.prompt,
+                "target": ctx.target,
             },
         )

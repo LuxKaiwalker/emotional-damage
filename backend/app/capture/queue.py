@@ -25,6 +25,7 @@ class FrameJob:
     submission_id: str
     round_no: int
     prompt: str
+    target: str
     path: Path
 
 
@@ -57,23 +58,42 @@ class FrameQueue:
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._workers.clear()
 
-    def submit(self, job: FrameJob) -> bool:
-        """Non-blocking enqueue. Returns False if the frame was dropped under load."""
+    async def submit(self, job: FrameJob) -> bool:
+        """Enqueue a frame, evicting the oldest queued one if the queue is full.
+
+        Never blocks on the queue. Every frame this throws away is reported back to the
+        engine, because the engine has already registered a submission for it: a frame
+        that is dropped silently leaves that submission pending for the rest of the
+        round, which reads as "still scoring" forever and quietly costs the player
+        whatever that round was worth.
+        """
         try:
             self._queue.put_nowait(job)
             return True
         except asyncio.QueueFull:
-            # Make room by discarding the oldest queued frame: newest data is worth more.
-            try:
-                stale = self._queue.get_nowait()
-                self._queue.task_done()
-                self.dropped += 1
-                log.warning("frame queue full, dropped stale frame %s", stale.submission_id)
-                self._queue.put_nowait(job)
-                return True
-            except (asyncio.QueueEmpty, asyncio.QueueFull):
-                self.dropped += 1
-                return False
+            pass
+
+        try:
+            stale = self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            # A queue that is both full and empty has no capacity at all, so the frame
+            # that goes is this one.
+            self.dropped += 1
+            await self._abandon(job, "overloaded")
+            return False
+
+        # Newest data is worth more than oldest. No await between the get and the put,
+        # so the slot just freed cannot be taken by anyone else.
+        self._queue.task_done()
+        self._queue.put_nowait(job)
+        self.dropped += 1
+        log.warning("frame queue full, dropped stale frame %s", stale.submission_id)
+        await self._abandon(stale, "dropped_under_load")
+        return True
+
+    async def _abandon(self, job: FrameJob, reason: str) -> None:
+        """Settle the submission of a frame that will never reach a processor."""
+        await self._engine.apply_result(job.room_id, job.submission_id, None, error=reason)
 
     @property
     def depth(self) -> int:
@@ -102,6 +122,7 @@ class FrameQueue:
             player_id=job.player_id,
             round_no=job.round_no,
             prompt=job.prompt,
+            target=job.target,
         )
         result = await self._processor.process(frame, ctx)
         await self._engine.apply_result(job.room_id, job.submission_id, result)
