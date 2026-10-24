@@ -22,13 +22,17 @@ export interface Submission {
   status: SubmissionStatus;
   result: ProcessResult | null;
   error: string | null;
+  /** Did this frame hit the round's target? `null` while the result is pending. */
+  correct: boolean | null;
 }
 
 export interface Player {
   id: string;
   name: string;
   connected: boolean;
-  score: number;
+  /** One point per round answered correctly. Integer: there is nothing fractional. */
+  points: number;
+  rounds_correct: number;
   joined_at: string;
   last_frame_at: string | null;
 }
@@ -36,15 +40,22 @@ export interface Player {
 export interface Round {
   number: number;
   prompt: string;
+  /** The label a submission has to carry to be correct. */
+  target: string;
   started_at: string;
   ends_at: string;
   submissions: Record<string, Submission>;
+  /** player_id -> points gained, filled in when the server ends the round. */
+  points_awarded: Record<string, number>;
 }
 
 export interface GameConfig {
   round_seconds: number;
   rounds_per_game: number;
+  game_seconds: number;
+  points_per_correct: number;
   capture_interval_ms: number;
+  max_players: number;
 }
 
 export interface GameState {
@@ -55,6 +66,11 @@ export interface GameState {
   round: Round | null;
   players: Record<string, Player>;
   config: GameConfig;
+  /** Bumped by every restart, so "scores reset" is distinguishable from "scores lost". */
+  game_no: number;
+  /** The game timer. Both null in the lobby. */
+  game_started_at: string | null;
+  game_ends_at: string | null;
   seq: number;
   server_time: string;
 }
@@ -74,6 +90,12 @@ export interface GameEvent {
   kind: string;
   payload: Record<string, unknown>;
   at: number;
+}
+
+export interface LeaveRoomResponse {
+  status: "left";
+  /** True when that was the last player: the room and its game are gone. */
+  room_destroyed: boolean;
 }
 
 export type FrameUploadResult =

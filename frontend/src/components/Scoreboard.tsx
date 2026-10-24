@@ -1,7 +1,7 @@
 import type { GameState } from "../types";
 
 export function Scoreboard({ state, playerId }: { state: GameState; playerId: string }) {
-  const players = Object.values(state.players).sort((a, b) => b.score - a.score);
+  const players = Object.values(state.players).sort((a, b) => b.points - a.points);
 
   return (
     <div className="panel">
@@ -17,9 +17,11 @@ export function Scoreboard({ state, playerId }: { state: GameState; playerId: st
                 {p.id === state.host_id && <span className="muted small"> (host)</span>}
               </span>
               <span className="muted small">
-                {submission?.result ? submission.result.label : (submission?.status ?? "—")}
+                {submission?.result
+                  ? `${submission.result.label}${submission.correct ? " ✓" : ""}`
+                  : (submission?.status ?? "—")}
               </span>
-              <span className="pscore">{p.score.toFixed(2)}</span>
+              <span className="pscore">{p.points}</span>
             </li>
           );
         })}
