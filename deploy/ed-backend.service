@@ -11,14 +11,14 @@ Group=edgame
 WorkingDirectory=/srv/emotional-damage/backend
 EnvironmentFile=/etc/emotional-damage/backend.env
 
-# Bound to all interfaces: this box serves the API directly, no reverse proxy.
-# Nothing here authenticates, so treat the open port as a demo-only exposure.
+# Loopback only: nginx terminates TLS and proxies /api and /ws here, so nothing
+# outside the box should reach uvicorn directly.
 #
 # Game state is in-process: one worker, always. --workers 2 would give you two
 # independent game worlds and rooms that appear to vanish depending on the process
 # a request lands in. See InMemoryRoomStore in app/game/store.py.
 ExecStart=/srv/emotional-damage/backend/.venv/bin/python -m uvicorn app.main:app \
-          --host 0.0.0.0 --port 8000 --workers 1
+          --host 127.0.0.1 --port 8000 --workers 1
 
 Restart=always
 RestartSec=2

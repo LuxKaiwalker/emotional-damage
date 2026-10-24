@@ -1,0 +1,25 @@
+[Unit]
+Description=emotional-damage SmartSpectra vitals sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=edgame
+Group=edgame
+WorkingDirectory=/srv/emotional-damage/frontend
+# server.js throws on boot without SMARTSPECTRA_API_KEY, and rejects every browser
+# with 403 unless WEB_ORIGIN matches the page origin exactly.
+EnvironmentFile=/etc/emotional-damage/spectra.env
+ExecStart=/usr/bin/node src/smart-spectra/server.js
+
+Restart=always
+RestartSec=2
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
