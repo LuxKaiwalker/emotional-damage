@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
+import { api } from "../api/client";
 import { CringeFace, Mascot, ScreamFace, ShockFace } from "../components/art";
 import { ChunkyButton, ChunkyCard, Modal, PageShell, Pill } from "../components/ui";
-import { lobby } from "../mock/data";
+import { saveSession } from "../session";
 
 const steps = [
   { color: "var(--pink)", title: "Uncle Damage speaks.", body: "Our voice agent yells a cursed prompt at the whole lobby." },
@@ -10,8 +12,32 @@ const steps = [
   { color: "var(--lime)", title: "Farm aura.", body: "Presage reads your vitals, we score the damage. Leaderboard after every round." },
 ];
 
+/** The backend requires a name of 1-32 chars on both create and join. */
+export const NAME_MAX = 32;
+
 export function Home() {
+  const navigate = useNavigate();
   const [howOpen, setHowOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // The room and this player's seat are minted together; persist the seat before leaving.
+      const sess = await api.createRoom(trimmed);
+      saveSession(sess, trimmed);
+      navigate(`/lobby/${sess.join_code.toUpperCase()}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create a lobby");
+      setBusy(false);
+    }
+  };
 
   return (
     <PageShell bg="yellow" className="page--fit" innerClassName="home" gap={0}>
@@ -56,8 +82,8 @@ export function Home() {
               <Pill>HOST MODE</Pill>
             </span>
             <h2>Create game</h2>
-            <p>Spawn a lobby, get a code, drag up to 4 friends into the trenches. 5 players max, no exceptions, no mercy.</p>
-            <ChunkyButton to={`/lobby/${lobby.code}`}>Make a lobby →</ChunkyButton>
+            <p>Spawn a lobby, get a code, drag your friends into the trenches. The server picks the prompts; no mercy.</p>
+            <ChunkyButton onClick={() => setCreateOpen(true)}>Make a lobby →</ChunkyButton>
           </ChunkyCard>
 
           <ChunkyCard className="action-card" tilt="1deg" style={{ background: "var(--cyan)" }}>
@@ -70,6 +96,48 @@ export function Home() {
           </ChunkyCard>
         </section>
       </div>
+
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        labelledBy="create-title"
+        describedBy="create-desc"
+      >
+        <Mascot className="modal__face" />
+        <h2 id="create-title">What do we call you?</h2>
+        <p id="create-desc">This is the name on the leaderboard when you get cooked.</p>
+        <form
+          className="name-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+        >
+          <label className="sr-only" htmlFor="host-name">
+            Your name
+          </label>
+          <input
+            id="host-name"
+            className="name-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={NAME_MAX}
+            placeholder="e.g. rizzlord"
+            autoComplete="nickname"
+            autoFocus
+          />
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="modal__actions">
+            <ChunkyButton color="lime" type="submit" disabled={!name.trim() || busy}>
+              {busy ? "spawning…" : "Spawn the lobby →"}
+            </ChunkyButton>
+          </div>
+        </form>
+      </Modal>
 
       <Modal open={howOpen} onClose={() => setHowOpen(false)} labelledBy="how-title" className="how">
         <h2 id="how-title">How it works (it's not that deep)</h2>

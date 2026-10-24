@@ -1,48 +1,23 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
 
-import { gameQuery } from "../game";
+import { api } from "../api/client";
+import { useFollowServerPhase, useGame } from "../game";
 import { Avatar, ChunkyButton, ChunkyCard, Header, PageShell, Pill } from "../components/ui";
-import { lobby, type Player } from "../mock/data";
 
-const TAG_BG: Record<NonNullable<Player["tag"]>, string> = {
+const TAG_BG: Record<string, string> = {
   HOST: "var(--yellow)",
   READY: "var(--lime)",
   "NOT READY": "var(--white)",
 };
 
-function Segmented<T extends number>({
-  label,
-  options,
-  value,
-  onChange,
-  format = String,
-}: {
-  label: string;
-  options: T[];
-  value: T;
-  onChange: (v: T) => void;
-  format?: (v: T) => string;
-}) {
-  return (
-    <div className="rules__row">
-      <span id={`seg-${label}`}>{label}</span>
-      <div className="seg" role="group" aria-labelledby={`seg-${label}`}>
-        {options.map((o) => (
-          <button key={o} type="button" aria-pressed={o === value} onClick={() => onChange(o)}>
-            {format(o)}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function Lobby() {
-  const code = (useParams().code ?? lobby.code).toUpperCase();
-  const [rounds, setRounds] = useState(lobby.rounds);
-  const [countdown, setCountdown] = useState(lobby.countdown);
+  const game = useGame();
+  useFollowServerPhase(game);
+
+  const { code, state, session, isHost, roster, connected } = game;
   const [copied, setCopied] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!copied) return;
@@ -59,7 +34,25 @@ export function Lobby() {
     }
   };
 
-  const slots = Array.from({ length: lobby.maxPlayers }, (_, i) => lobby.players[i]);
+  const start = async () => {
+    if (!session || starting) return;
+    setStarting(true);
+    setError(null);
+    try {
+      // Host only; the server answers 403 for anyone else. Everyone moves when the
+      // phase change arrives over the socket, not because of this response.
+      await api.startGame(session.room_id, session.player_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start the game");
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  // The server is the source of truth for both the roster and the rules.
+  const config = state?.config;
+  const maxPlayers = config?.max_players ?? 0;
+  const slots = Array.from({ length: maxPlayers }, (_, i) => roster[i]);
 
   return (
     <PageShell bg="pink" maxWidth={1040} gap={0} className="page--fit">
@@ -83,19 +76,18 @@ export function Lobby() {
 
             <ChunkyCard className="rules">
               <h2>House rules</h2>
-              <Segmented label="Rounds" options={[3, 5, 10]} value={rounds} onChange={setRounds} />
-              <Segmented
-                label="Countdown"
-                options={[3, 5]}
-                value={countdown}
-                onChange={setCountdown}
-                format={(v) => `${v}s`}
-              />
+              {/* Set by the server (backend/.env); there is no endpoint to change them mid-lobby. */}
               <div className="rules__row">
-                <span>Uncle Damage vibe</span>
-                <span className="sticker rules__vibe">
-                  {lobby.vibe}
-                </span>
+                <span>Rounds</span>
+                <span className="sticker rules__vibe">{config?.rounds_per_game ?? "…"}</span>
+              </div>
+              <div className="rules__row">
+                <span>Seconds per round</span>
+                <span className="sticker rules__vibe">{config ? `${config.round_seconds}s` : "…"}</span>
+              </div>
+              <div className="rules__row">
+                <span>Points per correct face</span>
+                <span className="sticker rules__vibe">{config?.points_per_correct ?? "…"}</span>
               </div>
             </ChunkyCard>
           </section>
@@ -103,43 +95,65 @@ export function Lobby() {
           <ChunkyCard as="section" className="victims">
             <div className="victims__head">
               <h1>The victims</h1>
-              <span className="victims__count" aria-label={`${lobby.players.length} of ${lobby.maxPlayers} players`}>
-                {lobby.players.length} / {lobby.maxPlayers}
+              <span
+                className="victims__count"
+                aria-label={`${roster.length} of ${maxPlayers} players`}
+              >
+                {roster.length} / {maxPlayers || "…"}
               </span>
             </div>
 
             <ul className="slots">
-              {slots.map((p, i) =>
-                p ? (
-                  <li key={p.id} className="slot slot--filled">
-                    <Avatar initial={p.initial} color={p.color} size={44} />
+              {slots.map((seat, i) => {
+                if (!seat) {
+                  return (
+                    <li key={`empty-${i}`} className="slot slot--empty">
+                      <Avatar initial="?" size={44} />
+                      <span className="slot__wait">waiting for victim #{i + 1}…</span>
+                    </li>
+                  );
+                }
+                const tag = seat.isHost ? "HOST" : seat.player.connected ? "READY" : "NOT READY";
+                return (
+                  <li key={seat.player.id} className="slot slot--filled">
+                    <Avatar initial={seat.look.initial} color={seat.look.color} size={44} />
                     <div className="slot__who">
-                      <span className="slot__name">{p.name}</span>
-                      <span className="slot__status">{p.status}</span>
+                      <span className="slot__name">
+                        {seat.player.name}
+                        {seat.isMe ? " (you)" : ""}
+                      </span>
+                      <span className="slot__status">
+                        {seat.player.connected ? "cam on · vibes questionable" : "connecting…"}
+                      </span>
                     </div>
-                    {p.tag && (
-                      <Pill bg={TAG_BG[p.tag]} style={{ flex: "0 0 auto", fontSize: 13, padding: "4px 10px" }}>
-                        {p.tag}
-                      </Pill>
-                    )}
+                    <Pill bg={TAG_BG[tag]} style={{ flex: "0 0 auto", fontSize: 13, padding: "4px 10px" }}>
+                      {tag}
+                    </Pill>
                   </li>
-                ) : (
-                  <li key={`empty-${i}`} className="slot slot--empty">
-                    <Avatar initial="?" size={44} />
-                    <span className="slot__wait">waiting for victim #{i + 1}…</span>
-                  </li>
-                ),
-              )}
+                );
+              })}
             </ul>
 
             <div className="lobby__foot">
-              <span>All cams on? Everyone's face is mid-buffering. Ready when you are.</span>
-              {lobby.isHost ? (
+              <span>
+                {!connected
+                  ? "reconnecting to the server…"
+                  : isHost
+                    ? "All cams on? Ready when you are."
+                    : "Waiting for the host to start the damage."}
+              </span>
+              {error && (
+                <p className="form-error" role="alert">
+                  {error}
+                </p>
+              )}
+              {isHost ? (
                 <ChunkyButton
-                  to={`/play/${code}${gameQuery({ round: 1, total: rounds, countdown, demo: false })}`}
                   color="lime"
+                  onClick={() => void start()}
+                  disabled={starting || !connected || roster.length < 1}
                 >
-                  Start the damage →
+                  {starting ? "starting…" : "Start the damage →"}
                 </ChunkyButton>
               ) : (
                 <ChunkyButton color="lime" disabled>

@@ -420,6 +420,25 @@ button, input { font-family: inherit; color: var(--ink); }
   .cell { width: 56px; height: 72px; font-size: 38px; }
 }
 
+
+/* --- name entry (create / join) ------------------------------------- */
+.name-form { display: flex; flex-direction: column; gap: 14px; align-items: center; width: 100%; }
+.name-input {
+  font-size: 20px; font-weight: 600; padding: 12px 18px; border: var(--border-thin);
+  border-radius: 14px; box-shadow: var(--shadow-sm); width: 100%; max-width: 340px; text-align: center;
+}
+.name-input:focus-visible { outline: 4px solid var(--ink); outline-offset: 3px; }
+
+/* Server-rejected actions: bad name, lobby full, game already started. */
+.form-error {
+  margin: 0; font-weight: 700; font-size: 15px; padding: 8px 14px;
+  background: var(--white); border: var(--border-thin); border-radius: var(--r-sm);
+  box-shadow: var(--shadow-sm); max-width: 380px;
+}
+
+/* Frame-uplink counters on the round screen. */
+.snitch__uplink { margin: 0; font-size: 13px; font-weight: 600; opacity: 0.7; text-align: center; }
+
 @media (prefers-reduced-motion: reduce) {
   .btn { transition: none; }
   .btn:hover:not(:disabled) { transform: none; }

@@ -1,37 +1,45 @@
-import { useEffect, useState, type CSSProperties } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState, type CSSProperties } from "react";
 
-import { gameQuery, useGameParams } from "../game";
+import { useFollowServerPhase, useGame } from "../game";
 import { LeaveGame } from "../components/LeaveGame";
-import { Avatar, ChunkyButton, ChunkyCard, PageShell, Pill } from "../components/ui";
-import { lobby, results, roundState } from "../mock/data";
+import { Avatar, ChunkyCard, PageShell, Pill } from "../components/ui";
 
-const NEXT_IN = 5;
+const ROASTS = [
+  "the camera saw everything. we all did.",
+  "some of you peaked in the lobby.",
+  "that was a choice. respect.",
+  "uncle damage is disappointed but not surprised.",
+];
+
+const RECEIPT_BG = ["var(--tint-pink)", "var(--tint-cyan)", "var(--tint-yellow)", "var(--tint-lime)"];
+const RECEIPT_TILT = ["-1deg", "0.5deg", "1deg", "-0.5deg"];
 
 export function Leaderboard() {
-  const code = (useParams().code ?? lobby.code).toUpperCase();
-  const params = useGameParams();
-  const navigate = useNavigate();
-  const [left, setLeft] = useState(NEXT_IN);
-  // Freeze the auto-advance while the leave dialog is open.
-  const [paused, setPaused] = useState(false);
+  const game = useGame();
+  useFollowServerPhase(game);
 
-  const last = params.round >= params.total;
-  const next = last
-    ? `/play/${code}/winner${gameQuery(params)}`
-    : `/play/${code}${gameQuery({ ...params, round: params.round + 1 })}`;
+  const { state, round, standings, roster } = game;
+  // The leave dialog no longer needs to pause anything: advancing is the server's job.
+  const [, setPaused] = useState(false);
 
-  useEffect(() => {
-    if (paused) return;
-    const id = window.setInterval(() => setLeft((s) => Math.max(s - 1, 0)), 1000);
-    return () => window.clearInterval(id);
-  }, [paused]);
+  const last = !!state && !!round && round.number >= state.config.rounds_per_game;
+  const roast = ROASTS[(round?.number ?? 0) % ROASTS.length];
 
-  useEffect(() => {
-    if (left === 0) navigate(next);
-  }, [left, next, navigate]);
-
-  const rows = results.rows;
+  // "Biometrics exposed" built from what the server actually decided about each player's frame.
+  const receipts = roster
+    .map((seat, i) => {
+      const sub = round?.submissions[seat.player.id];
+      return {
+        key: seat.player.id,
+        who: seat.player.name,
+        label: sub?.correct ? "nailed it" : sub ? "missed it" : "no frame",
+        value: sub?.result ? sub.result.label : "--",
+        sub: sub?.result ? `${Math.round(sub.result.confidence * 100)}% sure` : "camera saw nothing",
+        bg: RECEIPT_BG[i % RECEIPT_BG.length],
+        tilt: RECEIPT_TILT[i % RECEIPT_TILT.length],
+      };
+    })
+    .slice(0, 8);
 
   return (
     <PageShell bg="yellow" maxWidth={1000} gap={26}>
@@ -40,7 +48,8 @@ export function Leaderboard() {
       </div>
       <header className="lb__header">
         <Pill dark style={{ padding: "8px 16px", fontSize: 16 }}>
-          round {params.round} of {params.total} · "{roundState.promptShort}"
+          round {round?.number ?? "…"} of {state?.config.rounds_per_game ?? "…"} · "
+          {round?.target ?? "…"}"
         </Pill>
         <h1 className="title-outline">WHO GOT COOKED</h1>
       </header>
@@ -56,9 +65,9 @@ export function Leaderboard() {
           <span className="col-num">TOTAL AURA</span>
         </div>
         <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-          {rows.map((r, i) => {
+          {standings.map((r, i) => {
             const first = i === 0;
-            const lastRow = i === rows.length - 1;
+            const lastRow = i === standings.length - 1 && standings.length > 1;
             const bg = first ? "var(--pink)" : lastRow ? "var(--grey)" : "var(--tint-yellow)";
             const tilt = first ? "-1deg" : lastRow ? "1deg" : i === 1 ? "0.5deg" : "0deg";
             return (
@@ -70,13 +79,18 @@ export function Leaderboard() {
               >
                 <span className="col-rank">#{r.rank}</span>
                 <div className="col-player">
-                  <Avatar initial={r.player.initial} color={r.player.color} size={50} />
-                  <span className="result-row__name">{r.player.name}</span>
+                  <Avatar initial={r.look.initial} color={r.look.color} size={50} />
+                  <span className="result-row__name">
+                    {r.player.name}
+                    {r.isMe ? " (you)" : ""}
+                  </span>
                   <Pill thin style={{ fontSize: 13, padding: "4px 10px" }}>
-                    {r.tag}
+                    {r.delta > 0 ? "cooked" : "survived"}
                   </Pill>
                 </div>
-                <span className="col-num result-row__delta">{r.delta}</span>
+                <span className="col-num result-row__delta">
+                  {r.delta > 0 ? `+${r.delta}` : "0"}
+                </span>
                 <span className="col-num result-row__total">{r.total}</span>
               </li>
             );
@@ -87,12 +101,12 @@ export function Leaderboard() {
       <section aria-labelledby="receipts" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="receipts__head">
           <h2 id="receipts">Presage receipts</h2>
-          <Pill style={{ padding: "6px 12px" }}>this round's biometrics, exposed</Pill>
+          <Pill style={{ padding: "6px 12px" }}>what the server actually saw</Pill>
         </div>
         <div className="receipts__grid">
-          {results.receipts.map((r) => (
+          {receipts.map((r) => (
             <div
-              key={r.label}
+              key={r.key}
               className="receipt tilt"
               style={{ background: r.bg, "--tilt": r.tilt } as CSSProperties}
             >
@@ -107,20 +121,15 @@ export function Leaderboard() {
 
       <div className="lb__foot">
         <div className="roast-bubble tilt" style={{ "--tilt": "-1deg" } as CSSProperties}>
-          {results.roast}
+          {roast}
         </div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {params.demo && (
-            <ChunkyButton to={`/play/${code}/winner${gameQuery(params)}`} color="white" size="plain">
-              (prototype) final →
-            </ChunkyButton>
-          )}
-          <ChunkyButton to={next} color="lime">
-            <span aria-live="polite">
-              {last ? "Final results" : "Next round"} in {left}…
-            </span>
-          </ChunkyButton>
-        </div>
+        {/* No local timer: the server starts the next round after its intermission and the
+            phase change moves everyone at once. */}
+        <Pill dark style={{ padding: "10px 18px", fontSize: 16 }}>
+          <span aria-live="polite">
+            {last ? "final results" : "next round"} incoming…
+          </span>
+        </Pill>
       </div>
     </PageShell>
   );

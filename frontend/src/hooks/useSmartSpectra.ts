@@ -1,11 +1,36 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const WS_URL = import.meta.env.VITE_SPECTRA_WS_URL ?? "ws://localhost:3001";
+
+/** Matches the old useCamera default: small enough to upload twice a second. */
+const JPEG_QUALITY = 0.7;
 
 // Shape comes from decodeMetrics() on the server; log it once and tighten this.
 export type SpectraMetrics = Record<string, any>;
 
-export function useSmartSpectra() {
+export interface Spectra {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  ready: boolean;
+  error: string | null;
+  status: string;
+  measurements: SpectraMetrics | null;
+  validation: string;
+  /** Current video frame as a JPEG, for `POST /api/rooms/{id}/frames`. Null until the camera is up. */
+  captureFrame: () => Promise<Blob | null>;
+}
+
+/**
+ * Sole owner of the camera.
+ *
+ * One `getUserMedia` feeds two consumers:
+ *   - raw RGBA at camera rate -> the SmartSpectra node server (vitals)
+ *   - JPEG stills on demand   -> the game backend via `captureFrame` (scoring)
+ *
+ * These used to be two hooks each calling `getUserMedia` independently, which meant two
+ * MediaStreams off one device. The SmartSpectra socket is optional: if the node server is
+ * not running, the camera and `captureFrame` still work and only the vitals go missing.
+ */
+export function useSmartSpectra(): Spectra {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,6 +38,24 @@ export function useSmartSpectra() {
   const [measurements, setMeasurements] = useState<SpectraMetrics | null>(null);
   const [validation, setValidation] = useState("");
   const [restartKey, setRestartKey] = useState(0);
+
+  // Kept out of the RGBA loop's canvas on purpose: toBlob is async, and that canvas is
+  // overwritten 30 times a second.
+  const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const captureFrame = useCallback(async (): Promise<Blob | null> => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) return null;
+
+    const canvas = (captureCanvasRef.current ??= document.createElement("canvas"));
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+  }, []);
 
   useEffect(() => {
     let stream: MediaStream | undefined;
@@ -55,8 +98,6 @@ export function useSmartSpectra() {
           return;
         }
 
-        console.log("Camera settings:", stream.getVideoTracks()[0].getSettings());
-
         video = videoRef.current;
         if (!video) return;
         video.srcObject = stream;
@@ -67,9 +108,10 @@ export function useSmartSpectra() {
         socket.binaryType = "arraybuffer";
 
         socket.onopen = () => setStatus("Connected");
-        socket.onerror = () => setStatus("Connection error");
+        // The vitals sidecar is optional; say so rather than looking broken.
+        socket.onerror = () => setStatus("Vitals offline");
         socket.onclose = () => {
-          if (!stopped) setStatus("Disconnected");
+          if (!stopped) setStatus("Vitals offline");
         };
 
         socket.onmessage = (event) => {
@@ -147,8 +189,9 @@ export function useSmartSpectra() {
       if (vfc !== undefined && video) video.cancelVideoFrameCallback(vfc);
       socket?.close();
       stream?.getTracks().forEach((t) => t.stop());
+      setReady(false);
     };
   }, [restartKey]);
 
-  return { videoRef, ready, error, status, measurements, validation };
+  return { videoRef, ready, error, status, measurements, validation, captureFrame };
 }

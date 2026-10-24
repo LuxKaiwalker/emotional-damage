@@ -1,9 +1,12 @@
 import { useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import { api } from "../api/client";
 import { ChunkyButton, Header, PageShell, Sticker } from "../components/ui";
+import { saveSession } from "../session";
 
 const LEN = 4;
+const NAME_MAX = 32;
 const clean = (s: string) => s.toUpperCase().replace(/[^A-Z]/g, "");
 
 export function Join() {
@@ -12,10 +15,12 @@ export function Join() {
   const initial = clean(q.get("code") ?? "").slice(0, LEN);
   const [cells, setCells] = useState(() => Array.from({ length: LEN }, (_, i) => initial[i] ?? ""));
   const [tag, setTag] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
   const code = cells.join("");
-  const complete = code.length === LEN;
+  const complete = code.length === LEN && !!tag.trim();
 
   const fill = (from: number, letters: string) => {
     const next = [...cells];
@@ -48,9 +53,22 @@ export function Join() {
     fill(i, clean(e.clipboardData.getData("text")));
   };
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (complete) navigate(`/lobby/${code}`);
+    const name = tag.trim();
+    if (!complete || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // The join code is enough: the server resolves it to a room and mints this player's seat.
+      const sess = await api.joinRoom(code, name);
+      saveSession(sess, name);
+      navigate(`/lobby/${sess.join_code.toUpperCase()}`);
+    } catch (err) {
+      // 404 no such room, 409 game already started, 409 room full -- all worth showing verbatim.
+      setError(err instanceof Error ? err.message : "Could not join that lobby");
+      setBusy(false);
+    }
   };
 
   return (
@@ -65,7 +83,12 @@ export function Join() {
             4 letters. Your host has it. If they gatekept it, that's a them problem.
           </p>
 
-          <form className="join__form" onSubmit={onSubmit}>
+          <form
+            className="join__form"
+            onSubmit={(e) => {
+              void onSubmit(e);
+            }}
+          >
             <fieldset className="join__cells">
               <legend>Lobby code</legend>
               {cells.map((v, i) => (
@@ -96,11 +119,24 @@ export function Join() {
 
             <div className="join__tag">
               <label htmlFor="nick">Your gamer tag</label>
-              <input id="nick" value={tag} placeholder="sigma_sam" onChange={(e) => setTag(e.target.value)} />
+              <input
+                id="nick"
+                value={tag}
+                placeholder="sigma_sam"
+                maxLength={NAME_MAX}
+                autoComplete="nickname"
+                onChange={(e) => setTag(e.target.value)}
+              />
             </div>
 
-            <ChunkyButton type="submit" disabled={!complete} className="join__go">
-              Let me in →
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <ChunkyButton type="submit" disabled={!complete || busy} className="join__go">
+              {busy ? "squeezing in…" : "Let me in →"}
             </ChunkyButton>
           </form>
 

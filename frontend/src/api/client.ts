@@ -1,4 +1,4 @@
-import type { FrameUploadResult, GameState, PlayerSession } from "../types";
+import type { FrameUploadResult, GameState, LeaveRoomResponse, PlayerSession } from "../types";
 
 // Default to relative paths so the vite dev proxy handles it; override for a deployed build.
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
@@ -45,6 +45,20 @@ export const api = {
   startGame: (roomId: string, playerId: string) =>
     request<{ status: string }>(
       `/rooms/${encodeURIComponent(roomId)}/start?player_id=${encodeURIComponent(playerId)}`,
+      { method: "POST" },
+    ),
+
+  /** Host only, after `game_over`: clears every score and returns the room to its lobby. */
+  restartGame: (roomId: string, playerId: string) =>
+    request<{ status: string }>(
+      `/rooms/${encodeURIComponent(roomId)}/restart?player_id=${encodeURIComponent(playerId)}`,
+      { method: "POST" },
+    ),
+
+  /** Give up this player's seat. The last player out destroys the room. */
+  leaveRoom: (roomId: string, playerId: string) =>
+    request<LeaveRoomResponse>(
+      `/rooms/${encodeURIComponent(roomId)}/leave?player_id=${encodeURIComponent(playerId)}`,
       { method: "POST" },
     ),
 
