@@ -95,6 +95,9 @@ Two deadlines, and the game's always wins:
   would overrun it is truncated to it, and once less than a second is left the game ends
   instead of starting another round. So `ROUNDS_PER_GAME` is a maximum, not a promise:
   `game_over` arrives with `reason` of `rounds_complete` or `time_up`.
+- **Host-picked rounds** — in the lobby the host can pick 5 or 10 rounds
+  (`POST /api/rooms/{id}/rounds`). That stretches the room's game timer to fit every
+  round, so a picked count is always played in full and the deep scan lists all of them.
 
 Both are absolute timestamps, anchored the same way client-side, so a long round and a long
 game count down off the same measured clock offset.

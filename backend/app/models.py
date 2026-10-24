@@ -105,6 +105,9 @@ class GameState(BaseModel):
     phase: Phase = Phase.LOBBY
     host_id: str
     round: Round | None = None
+    # Every round of this game once it has been scored, oldest first. `round` only ever
+    # holds the latest, so this is what the end-of-game deep scan reads its prompts from.
+    history: list[Round] = Field(default_factory=list)
     players: dict[str, Player] = Field(default_factory=dict)
     config: GameConfig
     # Which game this is in the room's life. Bumped by every restart, so a client can tell

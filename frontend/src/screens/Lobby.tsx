@@ -4,6 +4,9 @@ import { api } from "../api/client";
 import { useFollowServerPhase, useGame } from "../game";
 import { Avatar, ChunkyButton, ChunkyCard, Header, PageShell, Pill } from "../components/ui";
 
+/** The game lengths the server accepts (ROUND_CHOICES in backend/app/game/engine.py). */
+const ROUND_CHOICES = [5, 10];
+
 const TAG_BG: Record<string, string> = {
   HOST: "var(--yellow)",
   READY: "var(--lime)",
@@ -49,6 +52,17 @@ export function Lobby() {
     }
   };
 
+  const pickRounds = async (rounds: number) => {
+    if (!session) return;
+    setError(null);
+    try {
+      // The new count arrives with the next snapshot, so every lobby shows it at once.
+      await api.setRounds(session.room_id, session.player_id, rounds);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change the rounds");
+    }
+  };
+
   // The server is the source of truth for both the roster and the rules.
   const config = state?.config;
   const maxPlayers = config?.max_players ?? 0;
@@ -76,10 +90,26 @@ export function Lobby() {
 
             <ChunkyCard className="rules">
               <h2>House rules</h2>
-              {/* Set by the server (backend/.env); there is no endpoint to change them mid-lobby. */}
+              {/* Set by the server; the host can switch the round count, everyone sees it. */}
               <div className="rules__row">
                 <span>Rounds</span>
-                <span className="sticker rules__vibe">{config?.rounds_per_game ?? "…"}</span>
+                {isHost ? (
+                  <span className="rounds-pick" role="group" aria-label="Rounds">
+                    {ROUND_CHOICES.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className="sticker rounds-pick__opt"
+                        aria-pressed={config?.rounds_per_game === n}
+                        onClick={() => void pickRounds(n)}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="sticker rules__vibe">{config?.rounds_per_game ?? "…"}</span>
+                )}
               </div>
               <div className="rules__row">
                 <span>Seconds per round</span>

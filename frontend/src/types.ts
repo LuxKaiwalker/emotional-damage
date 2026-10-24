@@ -78,6 +78,8 @@ export interface GameState {
   phase: Phase;
   host_id: string;
   round: Round | null;
+  /** Every scored round of this game, oldest first. Emptied by a restart. */
+  history: Round[];
   players: Record<string, Player>;
   config: GameConfig;
   /** Bumped by every restart, so "scores reset" is distinguishable from "scores lost". */

@@ -73,19 +73,6 @@ export function UncleDamage({ className }: { className?: string }) {
   );
 }
 
-/** Iris sits at `gaze` (-1..1 per axis) inside the eye. */
-export function Eye({ gaze, label }: { gaze: { x: number; y: number }; label: string }) {
-  const cx = 60 + gaze.x * 30;
-  const cy = 25 + gaze.y * 20;
-  return (
-    <svg viewBox="0 0 120 50" width="120" height="50" role="img" aria-label={label} style={{ flex: "0 0 auto" }}>
-      <ellipse cx="60" cy="25" rx="54" ry="20" fill="#fff" stroke="#111" strokeWidth="4" />
-      <circle cx={cx} cy={cy} r="13" fill="#3EC6FF" stroke="#111" strokeWidth="4" />
-      <circle cx={cx + 2} cy={cy - 1} r="5" fill="#111" />
-    </svg>
-  );
-}
-
 export function Crown({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 140 80" className={className} aria-hidden="true">
