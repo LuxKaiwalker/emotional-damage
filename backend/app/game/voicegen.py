@@ -24,7 +24,7 @@ from app.game.prompts import pick_prompt  # noqa: E402
 
 # --- constants: change these freely --------------------------------------
 # "gemini": Gemini writes a funny, tagged line for the prompt's emotion. "prompts": speak prompts.py text as-is.
-TEXT_SOURCE = "gemini"
+TEXT_SOURCE = "prompts"
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 API_KEY_ENV_VAR = "ELEVENLABS_API_KEY"
 # "Jessica": a female premade voice that sounds like a real, expressive young woman talking, not a narrator.
