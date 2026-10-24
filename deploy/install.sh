@@ -31,6 +31,18 @@ for path in "$ROOT/backend/.venv/bin/python" "$ROOT/frontend/dist/index.html"; d
     fi
 done
 
+# nginx's Debian-style layout is where the vhost goes; its absence means nginx
+# itself is missing, which is a clearer thing to say than a failed redirect.
+if [[ ! -d /etc/nginx/sites-available ]]; then
+    echo "no /etc/nginx/sites-available -- install nginx first:" >&2
+    echo "    apt install -y nginx certbot python3-certbot-nginx" >&2
+    exit 1
+fi
+if ! command -v certbot &>/dev/null; then
+    echo "warning: certbot not installed. Without TLS, getUserMedia has no secure" >&2
+    echo "context and the camera fails silently. apt install -y certbot python3-certbot-nginx" >&2
+fi
+
 # --- service account ----------------------------------------------------------
 if ! id "$USER_NAME" &>/dev/null; then
     useradd --system --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
