@@ -65,7 +65,7 @@ def generate_voice(text: str, out_dir: Path = OUTPUT_DIR) -> Path:
 
 def generate_for_prompt(round_no: int = 1, exclude: set[str] | None = None) -> tuple[str, Path]:
     """Pick a prompt from prompts.py, voice it, and return (prompt_text, audio_path)."""
-    prompt = pick_prompt(round_no, exclude)
+    prompt = pick_prompt(round_no, exclude).text
     return prompt, generate_voice(prompt)
 
 
