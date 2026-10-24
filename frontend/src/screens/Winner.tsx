@@ -1,8 +1,9 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 
 import { useGameParams } from "../game";
 import { Confetti, Crown } from "../components/art";
+import { DeepScanSummary } from "../components/DeepScanSummary";
 import { Avatar, ChunkyButton, ChunkyCard, PageShell, Pill } from "../components/ui";
 import { lobby, winner } from "../mock/data";
 
@@ -10,6 +11,7 @@ export function Winner() {
   const code = (useParams().code ?? lobby.code).toUpperCase();
   const { total } = useGameParams();
   const lastRank = winner.others[winner.others.length - 1]?.rank;
+  const [scanOpen, setScanOpen] = useState(true);
 
   return (
     <div className="winner">
@@ -58,6 +60,9 @@ export function Winner() {
         </ol>
 
         <div className="row-wrap">
+          <ChunkyButton color="yellow" size="lg" onClick={() => setScanOpen(true)}>
+            Your deep scan
+          </ChunkyButton>
           <ChunkyButton to={`/lobby/${code}`} color="lime" size="lg">
             Back to lobby
           </ChunkyButton>
@@ -66,6 +71,7 @@ export function Winner() {
           </ChunkyButton>
         </div>
       </PageShell>
+      <DeepScanSummary open={scanOpen} onClose={() => setScanOpen(false)} />
     </div>
   );
 }
