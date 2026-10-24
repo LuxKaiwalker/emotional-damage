@@ -54,6 +54,7 @@ wss.on("connection", (ws) => {
     });
 
     sdk.on("metrics", (buffer, timestampUs) => {
+      console.log(buffer);
       send({
         type: "metrics",
         timestampUs,
