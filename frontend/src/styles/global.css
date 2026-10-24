@@ -54,8 +54,9 @@ button, input { font-family: inherit; color: var(--ink); }
 
 /* ---------- shared components ---------- */
 
-.page { min-height: 100vh; padding: 32px 24px 48px; }
-.page__inner { margin: 0 auto; display: flex; flex-direction: column; }
+/* content sits in the middle of the viewport when it's shorter than the screen */
+.page { min-height: 100vh; min-height: 100dvh; padding: 32px 24px 48px; display: flex; flex-direction: column; justify-content: center; }
+.page__inner { width: 100%; margin: 0 auto; display: flex; flex-direction: column; }
 
 .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .pill-link {
@@ -282,11 +283,6 @@ button, input { font-family: inherit; color: var(--ink); }
 .webcam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 .webcam__msg { position: relative; color: var(--white); font-weight: 600; font-size: 18px; text-align: center; padding: 0 24px; }
 .webcam__msg b { display: block; font-family: var(--font-display); font-weight: 400; font-size: 34px; color: var(--yellow); }
-.webcam__tl, .webcam__tr { position: absolute; top: 16px; }
-.webcam__tl { left: 16px; display: flex; align-items: center; gap: 8px; }
-.webcam__tr { right: 16px; }
-.webcam__bottom { position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
-.live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink); }
 .snitch { flex: 1 1 300px; min-width: 0; box-shadow: var(--shadow-lg); padding: 22px; display: flex; flex-direction: column; gap: 14px; }
 .snitch__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .snitch__head h2 { margin: 0; font-family: var(--font-display); font-size: 26px; }
@@ -294,15 +290,25 @@ button, input { font-family: inherit; color: var(--ink); }
 .aura-box { margin-top: auto; background: var(--ink); color: var(--lime); border-radius: 16px; padding: 14px; text-align: center; }
 .aura-box > div:first-child { font-weight: 600; font-size: 14px; color: var(--white); }
 .aura-box > div:last-child { font-family: var(--font-display); font-size: 40px; line-height: 1.1; }
+.proto-link--reserved { visibility: hidden; }
+/* both words share one grid cell so swapping them doesn't change the pill's width */
+.voice-status { display: inline-grid; }
+.voice-status > span { grid-area: 1 / 1; }
+.voice-status > span[hidden] { display: inline; visibility: hidden; }
 .proto-link {
   text-align: center; font-weight: 700; font-size: 16px; text-decoration: none; background: var(--yellow);
   border: var(--border-thin); border-radius: 14px; padding: 12px; box-shadow: var(--shadow-sm);
 }
 
-.deepscan { box-shadow: var(--shadow-lg); padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+.modal.deepscan { width: min(1100px, calc(100vw - 32px)); padding: 22px; gap: 16px; align-items: stretch; text-align: left; overflow-y: auto; }
 .deepscan__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
-.deepscan__head h2 { margin: 0; font-family: var(--font-display); font-size: 32px; }
+.modal .deepscan__head h2 { outline: none; margin: 0; font-family: var(--font-display); font-size: 32px; }
 .deepscan__head h2 small { font-family: var(--font-body); font-size: 16px; font-weight: 600; }
+.scan-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.scan-round { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; border: var(--border-thin); border-radius: var(--r-md); padding: 8px 14px; }
+.scan-round__num { font-family: var(--font-display); font-size: 22px; }
+.scan-round__prompt { flex: 1 1 200px; min-width: 0; font-weight: 700; font-size: 17px; }
+.scan-round__aura { font-family: var(--font-display); font-size: 22px; margin-left: auto; }
 .scan-grid { display: flex; flex-wrap: wrap; gap: 16px; }
 .scan {
   flex: 1 1 300px; min-width: 0; border: var(--border-thin); border-radius: var(--r-md); padding: 14px 16px;
@@ -370,6 +376,31 @@ button, input { font-family: inherit; color: var(--ink); }
 .placing { border: var(--border-thin); border-radius: 14px; padding: 10px 16px; font-weight: 700; font-size: 17px; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
 
+/* The round screen fills exactly one viewport on desktop: the webcam takes whatever height is left,
+   and the announcer + Presage panel shrink with viewport height instead of pushing the page into a scroll. */
+.page--round { padding: 24px; }
+@media (min-width: 900px) {
+  .page--round { height: 100vh; height: 100dvh; min-height: 0; padding: clamp(12px, 2.4vh, 24px) 24px; justify-content: flex-start; }
+  .page--round > .page__inner { flex: 1; min-height: 0; }
+  .page--round .round__main { flex: 1; min-height: 0; flex-wrap: nowrap; }
+  .page--round .webcam { min-height: 0; }
+  .page--round .snitch { min-height: 0; overflow-y: auto; gap: clamp(6px, 1.4vh, 14px); padding: clamp(14px, 2.2vh, 22px); }
+  .page--round .snitch .grid2 { gap: clamp(8px, 1.2vh, 12px); }
+  .page--round .metric { padding: clamp(4px, 1.1vh, 12px) 12px; }
+  .page--round .snitch__head h2 { font-size: clamp(21px, 3.4vh, 26px); }
+  .page--round .metric__value { font-size: clamp(22px, 3.6vh, 34px); }
+  .page--round .aura-box { padding: clamp(6px, 1.2vh, 14px); }
+  .page--round .aura-box > div:last-child { font-size: clamp(28px, 4.2vh, 40px); }
+  .page--round .proto-link { padding: clamp(8px, 1.2vh, 12px); }
+  .page--round .announcer { padding: clamp(10px, 1.8vh, 20px) 24px; flex-wrap: nowrap; }
+  .page--round .announcer__face { width: clamp(56px, 9vh, 96px); height: clamp(56px, 9vh, 96px); }
+  .page--round .announcer__mid { flex-basis: 0; }
+  .page--round .announcer__prompt { font-size: clamp(22px, min(3.4vw, 4.2vh), 40px); }
+  .page--round .countdown { width: clamp(88px, 13vh, 130px); height: clamp(88px, 13vh, 130px); }
+  .page--round .countdown:not(.countdown--done) .countdown__num { font-size: clamp(46px, 7.5vh, 76px); }
+  .page--round .countdown--done .countdown__num { font-size: clamp(16px, 2.1vh, 19px); max-width: 80%; }
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 600px) {
@@ -381,7 +412,7 @@ button, input { font-family: inherit; color: var(--ink); }
   .face--sm { width: 52px; height: 52px; }
   .home__faces--left .face--sm, .home__faces--right .face--sm { margin: 0; }
   .tilt { transform: rotate(clamp(-1deg, var(--tilt, 0deg), 1deg)) !important; }
-  .action-card, .victims, .results, .deepscan, .snitch, .announcer, .code-card, .join__card { padding: 20px; }
+  .action-card, .victims, .results, .modal.deepscan, .snitch, .page--round .announcer, .code-card, .join__card { padding: 20px; }
 }
 
 @media (max-width: 420px) {

@@ -39,34 +39,45 @@ export const roundState = {
   totalRounds: 5,
   prompt: "Make the face of someone who just stepped on a LEGO… barefoot… at 3am.",
   promptShort: "stepped on a LEGO",
-  roast: "pain detected. keep cooking.",
   live: { pulse: 112, breathing: 24, blinks: 7, talking: true, damageMatch: 87, aura: 420 },
-  deepScan: {
-    signalConfidence: 94,
-    stability: "stable",
-    pulseWave: [40, 40, 12, 50, 38, 40, 40, 10, 50, 38, 40, 40, 14, 50, 38, 40, 40, 8, 50, 38, 40, 40, 12, 50, 38, 40],
-    hrv: 29,
-    hrvVsBaseline: -41,
-    breathingUpper: [30, 10, 30, 50, 30, 10, 30, 50, 30, 10, 30, 50, 30, 10, 30, 50, 30],
-    breathingLower: [46, 41, 46, 51, 46, 41, 46, 51, 46],
-    bpWave: [50, 50, 26, 28, 40, 44, 46, 46, 20, 22, 36, 40, 42, 42, 12, 14, 30, 34],
-    bpTrend: "up" as "up" | "down" | "flat",
-    expressions: [
-      { label: "Pain", pct: 71, color: "var(--pink)" },
-      { label: "Shock", pct: 18, color: "var(--cyan)" },
-      { label: "Cringe", pct: 8, color: "var(--yellow)" },
-      { label: "Neutral", pct: 3, color: "#bbb" },
-    ],
-    gaze: "off-camera right",
-    /** iris offset from centre, -1..1 on each axis */
-    gazeVector: { x: 0.6, y: -0.15 },
-    lookAways: 2,
-    squints: 1,
-    eyePenalty: -20,
-    face: { mouthStretch: 92, browCrunch: 78, heldSeconds: 2.4, screamed: true, lighting: "ok", inFrame: 82 },
-    vibeCheck:
-      "Pulse jumped 34 bpm in under a second and your breathing went full chest-mode. That LEGO was personal.",
-  },
+};
+
+/** Deep scan summary for the whole game, shown in a modal on the winner screen. */
+export const gameScan = {
+  rounds: [
+    { round: 1, prompt: "stubbed toe", peakPulse: 104, hrv: 38, topExpression: "Pain", aura: 310 },
+    { round: 2, prompt: "stepped on a LEGO", peakPulse: 131, hrv: 29, topExpression: "Pain", aura: 420 },
+    { round: 3, prompt: "ex texts 'u up'", peakPulse: 118, hrv: 33, topExpression: "Shock", aura: 280 },
+    { round: 4, prompt: "mom found your search history", peakPulse: 126, hrv: 31, topExpression: "Cringe", aura: 390 },
+    { round: 5, prompt: "WiFi died mid-ranked", peakPulse: 122, hrv: 30, topExpression: "Pain", aura: 580 },
+  ],
+  signalConfidence: 94,
+  stability: "stable",
+  /** waveforms are from your most damaged round */
+  pulseWave: [40, 40, 12, 50, 38, 40, 40, 10, 50, 38, 40, 40, 14, 50, 38, 40, 40, 8, 50, 38, 40, 40, 12, 50, 38, 40],
+  /** average across rounds */
+  hrv: 32,
+  hrvVsBaseline: -36,
+  breathingUpper: [30, 10, 30, 50, 30, 10, 30, 50, 30, 10, 30, 50, 30, 10, 30, 50, 30],
+  breathingLower: [46, 41, 46, 51, 46, 41, 46, 51, 46],
+  bpWave: [50, 50, 26, 28, 40, 44, 46, 46, 20, 22, 36, 40, 42, 42, 12, 14, 30, 34],
+  bpTrend: "up" as "up" | "down" | "flat",
+  expressions: [
+    { label: "Pain", pct: 71, color: "var(--pink)" },
+    { label: "Shock", pct: 18, color: "var(--cyan)" },
+    { label: "Cringe", pct: 8, color: "var(--yellow)" },
+    { label: "Neutral", pct: 3, color: "#bbb" },
+  ],
+  gaze: "off-camera right",
+  /** iris offset from centre, -1..1 on each axis */
+  gazeVector: { x: 0.6, y: -0.15 },
+  lookAways: 9,
+  squints: 4,
+  blinks: 38,
+  eyePenalty: -70,
+  face: { mouthStretch: 92, browCrunch: 78, heldSeconds: 2.4, screamed: true, lighting: "ok", inFrame: 82 },
+  vibeCheck:
+    "Five rounds, five breakdowns. Your pulse peaked on the LEGO and never fully came back. Uncle Damage is proud.",
 };
 
 export type ResultRow = {
