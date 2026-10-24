@@ -3,12 +3,13 @@
 import random
 
 PROMPTS = (
-    "Look as offended as possible",
-    "Fake a convincing smile",
-    "Act like you just saw the bill",
-    "Maximum disappointment",
-    "Pretend you understood the joke",
-    "Deadpan stare",
+    "Look Angry, like you just saw your ex with someone else",
+    "look contempt",
+    "look disgusted",
+    "Look disappointed",
+    "Look scared",
+    "Look sad, like you just a massive hackathon because someone nuked the repo",
+    "look surprised! like you just saw a ghost",
 )
 
 
