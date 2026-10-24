@@ -1,139 +1,93 @@
-import { Eye } from "./art";
-import { ChunkyButton, MeterBar, Modal, Pill, Waveform } from "./ui";
-import { gameScan as ds } from "../mock/data";
+import { ChunkyButton, Modal, Pill } from "./ui";
+import type { Round } from "../types";
 
-/** End-of-game deep scan: what Presage read off your face across every round. */
-export function DeepScanSummary({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** One played round, as this player experienced it. */
+interface ScanRound {
+  number: number;
+  prompt: string;
+  target: string;
+  /** What the processor read off this player's last frame; null when nothing was scored. */
+  read: { label: string; confidence: number } | null;
+  correct: boolean;
+  points: number;
+}
+
+function scanRounds(rounds: Round[], playerId: string | undefined): ScanRound[] {
+  return rounds.map((r) => {
+    const sub = playerId ? r.submissions[playerId] : undefined;
+    const result = sub?.status === "done" ? sub.result : null;
+    return {
+      number: r.number,
+      prompt: r.prompt,
+      target: r.target,
+      read: result && { label: result.label, confidence: result.confidence },
+      correct: sub?.correct === true,
+      points: (playerId && r.points_awarded[playerId]) || 0,
+    };
+  });
+}
+
+function vibeCheck(rounds: ScanRound[]): string {
+  const nailed = rounds.filter((r) => r.correct).length;
+  const missed = rounds.find((r) => r.read && !r.correct);
+  if (rounds.length === 0) return "No rounds, no damage. Suspicious.";
+  if (nailed === rounds.length) return `${nailed} for ${nailed}. Every face landed. Uncle Damage is proud.`;
+  if (nailed === 0) return `0 for ${rounds.length}. Your face said nothing the prompts asked for.`;
+  const miss = missed ? ` "${missed.target}" came out ${missed.read!.label}.` : "";
+  return `${nailed} of ${rounds.length} faces nailed.${miss} Uncle Damage saw everything.`;
+}
+
+/** End-of-game deep scan: every round actually played (`state.history`), in order. */
+export function DeepScanSummary({
+  open,
+  onClose,
+  rounds: history,
+  playerId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  rounds: Round[];
+  playerId: string | undefined;
+}) {
+  const rounds = scanRounds(history, playerId);
+  const reads = rounds.flatMap((r) => (r.read ? [r.read] : []));
+  const confidence = reads.length
+    ? Math.round((reads.reduce((sum, r) => sum + r.confidence, 0) / reads.length) * 100)
+    : null;
+
   return (
     <Modal open={open} onClose={onClose} labelledBy="deepscan" className="deepscan">
       <div className="deepscan__head">
         {/* first focusable element, so the dialog opens scrolled to the top rather than on the button */}
         <h2 id="deepscan" tabIndex={-1}>
-          Deep scan <small>(all {ds.rounds.length} rounds of your soul)</small>
+          Deep scan <small>(all {rounds.length} rounds of your soul)</small>
         </h2>
-        <Pill bg="var(--lime)" style={{ padding: "6px 14px" }}>
-          signal confidence {ds.signalConfidence}% · {ds.stability}
-        </Pill>
+        {confidence !== null && (
+          <Pill bg="var(--lime)" style={{ padding: "6px 14px" }}>
+            read confidence {confidence}%
+          </Pill>
+        )}
       </div>
 
       <ol className="scan-rounds">
-        {ds.rounds.map((r) => (
-          <li key={r.round} className="scan-round">
-            <span className="scan-round__num">R{r.round}</span>
+        {rounds.map((r) => (
+          <li key={r.number} className="scan-round">
+            <span className="scan-round__num">R{r.number}</span>
             <span className="scan-round__prompt">{r.prompt}</span>
             <span className="scan__sub">
-              {r.peakPulse} bpm peak · HRV {r.hrv} ms · {r.topExpression}
+              wanted {r.target} ·{" "}
+              {r.read
+                ? `read ${r.read.label} (${Math.round(r.read.confidence * 100)}%) ${r.correct ? "✓" : "✗"}`
+                : "no face caught"}
             </span>
-            <span className="scan-round__aura">+{r.aura}</span>
+            <span className="scan-round__aura">+{r.points}</span>
           </li>
         ))}
       </ol>
 
-      <div className="scan-grid">
-        <div className="scan" style={{ background: "var(--tint-pink)" }}>
-          <div className="scan__head">
-            <h3>Heart goes brr</h3>
-            <span>pulse pleth</span>
-          </div>
-          <Waveform points={ds.pulseWave} label="Pulse waveform, five sharp beats" />
-          <div className="scan__row">
-            <span className="scan__big">avg HRV {ds.hrv} ms</span>
-            <span className="scan__sub">
-              {ds.hrvVsBaseline < 0 ? "↓" : "↑"} {Math.abs(ds.hrvVsBaseline)}% vs your baseline = stressed fr
-            </span>
-          </div>
-        </div>
-
-        <div className="scan" style={{ background: "var(--tint-cyan)" }}>
-          <div className="scan__head">
-            <h3>Panic breathing</h3>
-            <span>upper vs lower</span>
-          </div>
-          <div className="overlay" role="img" aria-label="Breathing waveforms: chest line large and fast, belly line small">
-            <Waveform points={ds.breathingUpper} smooth decorative />
-            <Waveform points={ds.breathingLower} smooth dashed decorative />
-          </div>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontWeight: 600, fontSize: 14 }}>
-            <span>— chest (upper)</span>
-            <span>- - belly (lower)</span>
-          </div>
-          <div className="scan__big">chest-heavy: shallow &amp; fast. certified panic.</div>
-        </div>
-
-        <div className="scan" style={{ background: "var(--tint-yellow)" }}>
-          <div className="scan__head">
-            <h3>Pressure check</h3>
-            <span>relative BP waveform</span>
-          </div>
-          <Waveform points={ds.bpWave} smooth label="Relative blood pressure waveform trending upward" />
-          <div className="scan__row">
-            <span className="scan__big">trend {{ up: "↑ climbing", down: "↓ dropping", flat: "→ flat" }[ds.bpTrend]}</span>
-            <span className="scan__sub">relative, not a medical reading</span>
-          </div>
-        </div>
-
-        <div className="scan" style={{ background: "var(--tint-lime)" }}>
-          <div className="scan__head">
-            <h3>Face classifier</h3>
-            <span>expression</span>
-          </div>
-          {ds.expressions.map((e) => (
-            <div key={e.label} className="classifier-row">
-              <span>{e.label}</span>
-              <MeterBar value={e.pct} label={e.label} color={e.color} />
-              <span>{e.pct}%</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="scan">
-          <div className="scan__head">
-            <h3>Eye snitch</h3>
-            <span>iris + blinks</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            <Eye gaze={ds.gazeVector} label={`Eye looking ${ds.gaze}`} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-              <span className="scan__big">gaze: {ds.gaze}</span>
-              <span className="scan__sub">
-                looked away {ds.lookAways}× (sus) · {ds.blinks} blinks · {ds.squints} squint
-                {ds.squints === 1 ? "" : "s"}
-              </span>
-            </div>
-          </div>
-          <div className="penalty">
-            eye contact penalty: {ds.eyePenalty < 0 ? "−" : "+"}
-            {Math.abs(ds.eyePenalty)} aura
-          </div>
-        </div>
-
-        <div className="scan">
-          <div className="scan__head">
-            <h3>Commitment</h3>
-            <span>face points + talking</span>
-          </div>
-          <div className="grid2" style={{ gap: 10 }}>
-            {[
-              ["mouth stretch", `${ds.face.mouthStretch}%`],
-              ["brow crunch", `${ds.face.browCrunch}%`],
-              ["held the face", `${ds.face.heldSeconds}s`],
-              ["screamed", ds.face.screamed ? "yes" : "no"],
-            ].map(([k, v]) => (
-              <div key={k}>
-                <div className="scan__sub">{k}</div>
-                <div className="commit-val">{v}</div>
-              </div>
-            ))}
-          </div>
-          <div className="scan__sub">
-            lighting {ds.face.lighting} · face {ds.face.inFrame}% in frame · stability good
-          </div>
-        </div>
-      </div>
-
       <div className="vibe">
         <span className="vibe__tag">AI vibe check</span>
-        <span className="vibe__quote">"{ds.vibeCheck}"</span>
+        <span className="vibe__quote">"{vibeCheck(rounds)}"</span>
       </div>
 
       <div className="modal__actions">

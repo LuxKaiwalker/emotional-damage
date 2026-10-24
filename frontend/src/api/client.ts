@@ -54,6 +54,13 @@ export const api = {
       { method: "POST" },
     ),
 
+  /** Host only, in the lobby: how many rounds the next game plays (5 or 10). */
+  setRounds: (roomId: string, playerId: string, rounds: number) =>
+    request<{ rounds_per_game: number }>(
+      `/rooms/${encodeURIComponent(roomId)}/rounds?player_id=${encodeURIComponent(playerId)}&rounds=${rounds}`,
+      { method: "POST" },
+    ),
+
   /** Host only, after `game_over`: clears every score and returns the room to its lobby. */
   restartGame: (roomId: string, playerId: string) =>
     request<{ status: string }>(

@@ -46,6 +46,10 @@ log = logging.getLogger(__name__)
 
 # Below this, the leftover game time is not worth a round of its own.
 MIN_ROUND_SECONDS = 1.0
+# The game lengths the host can pick in the lobby.
+ROUND_CHOICES = (5, 10)
+# Headroom on a picked game's timer, so scheduling jitter never costs its last round.
+GAME_SLACK_SECONDS = 5
 
 
 class AcceptedFrame(NamedTuple):
@@ -260,13 +264,42 @@ class GameEngine:
 
             now = utcnow()
             state.game_started_at = now
-            state.game_ends_at = now + timedelta(seconds=self.settings.game_seconds)
+            state.game_ends_at = now + timedelta(seconds=state.config.game_seconds)
             await self._publish(room, EventMessage(kind="game_started", payload={
                 "game_no": state.game_no,
                 "ends_at": state.game_ends_at.isoformat(),
             }))
 
         room.task = asyncio.create_task(self._run_game(room), name=f"game:{room_id}")
+
+    async def set_rounds(self, room_id: str, player_id: str, rounds: int) -> None:
+        """Host picks the game length in the lobby. It sticks across restarts.
+
+        The game timer grows to fit: a hard cap shorter than the rounds asked for would
+        quietly end the game early, and the deep scan would list fewer rounds than promised.
+        """
+        room = self.require_room(room_id)
+        async with room.lock:
+            state = room.state
+            if player_id != state.host_id:
+                raise GameError("only the host can change the rounds", status_code=403)
+            if state.phase is not Phase.LOBBY:
+                raise GameError(f"cannot change rounds in phase {state.phase.value}", 409)
+            if rounds not in ROUND_CHOICES:
+                choices = " or ".join(map(str, ROUND_CHOICES))
+                raise GameError(f"rounds must be {choices}", status_code=422)
+
+            needed = (
+                rounds * self.settings.round_seconds
+                + (rounds - 1) * self.settings.intermission_seconds
+                + GAME_SLACK_SECONDS
+            )
+            state.config.rounds_per_game = rounds
+            state.config.game_seconds = max(self.settings.game_seconds, needed)
+            await self._publish(room, EventMessage(kind="config_changed", payload={
+                "rounds_per_game": rounds,
+                "game_seconds": state.config.game_seconds,
+            }))
 
     async def restart_game(self, room_id: str, player_id: str) -> None:
         """Back to the lobby with a clean slate, so the same room can play again.
@@ -291,6 +324,7 @@ class GameEngine:
                 player.rounds_correct = 0
                 player.last_frame_at = None
             state.round = None
+            state.history = []
             state.phase = Phase.LOBBY
             state.game_no += 1
             state.game_started_at = None
@@ -413,7 +447,8 @@ class GameEngine:
         """One task per active room: owns every phase transition and its timing."""
         try:
             reason = "rounds_complete"
-            for round_no in range(1, self.settings.rounds_per_game + 1):
+            rounds = room.state.config.rounds_per_game
+            for round_no in range(1, rounds + 1):
                 budget = self._round_budget(room)
                 if budget is None:
                     reason = "time_up"
@@ -424,7 +459,7 @@ class GameEngine:
                 await asyncio.sleep(await self._begin_round(room, round_no, budget))
                 await self._end_round(room)
 
-                if round_no < self.settings.rounds_per_game:
+                if round_no < rounds:
                     remaining = self._seconds_left(room)
                     if remaining <= MIN_ROUND_SECONDS:
                         reason = "time_up"
@@ -464,7 +499,10 @@ class GameEngine:
                 # this instant, is what keeps `round.ends_at <= game_ends_at` exactly true.
                 ends_at = min(ends_at, room.state.game_ends_at)
 
-            previous = {room.state.round.prompt} if room.state.round else set()
+            # No prompt twice in one game, while there are fresh ones left to pick.
+            previous = {r.prompt for r in room.state.history}
+            if room.state.round:
+                previous.add(room.state.round.prompt)
             prompt = pick_prompt(round_no, exclude=previous)
             room.state.phase = Phase.ROUND
             room.state.round = Round(
@@ -503,6 +541,7 @@ class GameEngine:
                     player.rounds_correct += 1
                     awarded[player_id] = self.settings.points_per_correct
                 state.round.points_awarded = awarded
+                state.history.append(state.round.model_copy(deep=True))
 
             await self._publish(room, EventMessage(kind="round_ended", payload={
                 "round": state.round.number if state.round else None,

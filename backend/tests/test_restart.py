@@ -31,6 +31,23 @@ def test_restart_clears_the_scores_and_returns_to_the_lobby(hit_client, jpeg):
     assert all(p["rounds_correct"] == 0 for p in state["players"].values())
 
 
+def test_game_over_keeps_every_played_round_and_restart_clears_them(hit_client, jpeg):
+    """The deep scan lists the rounds that were actually played, in order."""
+    host = create_room(hit_client, "alice")
+    room_id = host["room_id"]
+    state = _finished_game(hit_client, jpeg, [host])
+
+    history = state["history"]
+    assert [r["number"] for r in history] == [1, 2]
+    assert history[-1]["prompt"] == state["round"]["prompt"]
+    assert len({r["prompt"] for r in history}) == len(history), "no prompt twice in a game"
+    assert history[0]["submissions"][host["player_id"]]["correct"] is True
+    assert history[0]["points_awarded"] == {host["player_id"]: 1}
+
+    hit_client.post(f"/api/rooms/{room_id}/restart", params={"player_id": host["player_id"]})
+    assert state_of(hit_client, room_id)["history"] == []
+
+
 def test_the_room_keeps_its_identity_across_a_restart(hit_client, jpeg):
     """Same room id and join code: the players in the room do not have to do anything."""
     host = create_room(hit_client, "alice")

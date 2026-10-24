@@ -61,6 +61,18 @@ async def start_game(room_id: str, player_id: str, engine: EngineDep) -> dict[st
     return {"status": "started"}
 
 
+@router.post("/{room_id}/rounds", status_code=200)
+async def set_rounds(
+    room_id: str, player_id: str, rounds: int, engine: EngineDep
+) -> dict[str, int]:
+    """Host only, in the lobby: how many rounds the next game plays (5 or 10)."""
+    try:
+        await engine.set_rounds(room_id, player_id, rounds)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {"rounds_per_game": rounds}
+
+
 @router.post("/{room_id}/restart", status_code=200)
 async def restart_game(room_id: str, player_id: str, engine: EngineDep) -> dict[str, str]:
     """Host only, after `game_over`: clears every score and returns the room to its lobby.

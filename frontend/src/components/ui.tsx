@@ -228,58 +228,6 @@ export function MeterBar({
   );
 }
 
-/** Catmull-Rom → cubic bezier, so a handful of points reads as a smooth breath/BP curve. */
-function smoothPath(pts: [number, number][]) {
-  let d = `M${pts[0][0]} ${pts[0][1]}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [p0, p1, p2, p3] = [pts[i - 1] ?? pts[i], pts[i], pts[i + 1], pts[i + 2] ?? pts[i + 1]];
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    d += ` C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${p2[0]} ${p2[1]}`;
-  }
-  return d;
-}
-
-export function Waveform({
-  points,
-  label,
-  height = 60,
-  dashed,
-  smooth,
-  decorative,
-}: {
-  points: number[];
-  label?: string;
-  height?: number;
-  dashed?: boolean;
-  smooth?: boolean;
-  decorative?: boolean;
-}) {
-  const step = 260 / Math.max(points.length - 1, 1);
-  const pts = points.map((y, i) => [+(i * step).toFixed(1), y] as [number, number]);
-  const d = smooth ? smoothPath(pts) : `M${pts.map((p) => p.join(" ")).join(" L")}`;
-  return (
-    <svg
-      className="waveform"
-      viewBox="0 0 260 60"
-      width="100%"
-      height={height}
-      preserveAspectRatio="none"
-      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label })}
-    >
-      <path
-        d={d}
-        fill="none"
-        stroke="var(--ink)"
-        strokeWidth={dashed ? 3 : 3.5}
-        strokeLinejoin="round"
-        strokeDasharray={dashed ? "6 5" : undefined}
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}
-
 export function Countdown({ seconds }: { seconds: number }) {
   const done = seconds <= 0;
   return (

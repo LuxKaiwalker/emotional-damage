@@ -11,12 +11,13 @@ class Settings(BaseSettings):
 
     # --- game loop -------------------------------------------------------
     round_seconds: int = 20
-    rounds_per_game: int = 3
+    # The default for a new room; the host can switch it to 5 or 10 in the lobby.
+    rounds_per_game: int = 5
     intermission_seconds: int = 4
     # Hard wall-clock cap on one game. The round driver stops starting rounds once this
     # is spent and truncates a round that would overrun it, so a game can never outlive
     # its timer no matter how ROUND_SECONDS and ROUNDS_PER_GAME are set.
-    game_seconds: int = 120
+    game_seconds: int = 130
     # What one correct answer is worth. The rule is one point per correct round.
     points_per_correct: int = 1
 

@@ -116,7 +116,12 @@ export function Winner() {
           </ChunkyButton>
         </div>
       </PageShell>
-      <DeepScanSummary open={scanOpen} onClose={() => setScanOpen(false)} />
+      <DeepScanSummary
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        rounds={state?.history ?? []}
+        playerId={session?.player_id}
+      />
     </div>
   );
 }

@@ -148,25 +148,8 @@ export function Round() {
           <div className="snitch__head">
             <h2 id="snitch-title">Presage reads</h2>
           </div>
-          <div className="grid2">
-            {/* Pulse and breathing come from the SmartSpectra sidecar and are forwarded to
-                the server so the whole room can see them -- but they are never scoring
-                input, so a high pulse is worth exactly zero points. */}
-            <MetricTile
-              label="Pulse"
-              value={m?.pulse ?? "--"}
-              unit="bpm"
-              caption={m ? "live read" : "waiting for vitals"}
-              bg="var(--tint-pink)"
-            />
-            <MetricTile
-              label="Breathing"
-              value={m?.breathing ?? "--"}
-              unit="/min"
-              caption={m ? "live read" : "waiting for vitals"}
-              bg="var(--tint-cyan)"
-            />
-            {/* These two are the server's actual verdict on the frames you uploaded. */}
+          <div className="snitch__reads">
+            {/* The server's actual verdict on the frames you uploaded, stacked full width. */}
             <MetricTile
               label="Server read"
               value={result?.label ?? "--"}
@@ -178,6 +161,15 @@ export function Round() {
               value={mySubmission?.correct === null ? "…" : mySubmission?.correct ? "yes" : "no"}
               caption={mySubmission ? `frame ${mySubmission.status}` : "no frame scored yet"}
               bg="var(--tint-lime)"
+            />
+            {/* Breathing comes from the SmartSpectra sidecar and is forwarded to the server so
+                the whole room can see it -- but it is never scoring input. */}
+            <MetricTile
+              label="Breathing"
+              value={m?.breathing ?? "--"}
+              unit="/min"
+              caption={m ? "live read" : "waiting for vitals"}
+              bg="var(--tint-cyan)"
             />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
