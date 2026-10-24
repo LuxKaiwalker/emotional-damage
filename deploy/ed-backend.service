@@ -1,0 +1,34 @@
+[Unit]
+Description=emotional-damage game server (FastAPI)
+Documentation=https://github.com/LuxKaiwalker/emotional-damage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=edgame
+Group=edgame
+WorkingDirectory=/srv/emotional-damage/backend
+EnvironmentFile=/etc/emotional-damage/backend.env
+
+# Game state is in-process: one worker, always. --workers 2 would give you two
+# independent game worlds and rooms that appear to vanish depending on the process
+# a request lands in. See InMemoryRoomStore in app/game/store.py.
+ExecStart=/srv/emotional-damage/backend/.venv/bin/python -m uvicorn app.main:app \
+          --host 127.0.0.1 --port 8000 --workers 1
+
+Restart=always
+RestartSec=2
+
+# /var/lib/emotional-damage, created and chowned by systemd. MEDIA_DIR points here;
+# MediaStore and VoiceStore both mkdir their own subdirectories.
+StateDirectory=emotional-damage
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/emotional-damage
+
+[Install]
+WantedBy=multi-user.target
