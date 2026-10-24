@@ -69,7 +69,7 @@ export function RoundView({
           <div className="timer">{remaining}s</div>
           <p className="muted small">
             {mine?.result
-              ? `latest read: ${mine.result.label} · ${mine.result.score.toFixed(2)} pts (conf ${mine.result.confidence.toFixed(2)})`
+              ? `latest read: ${mine.result.label} (conf ${mine.result.confidence.toFixed(2)}) · ${mine.correct ? "on target" : `target is ${state.round.target}`}`
               : mine
                 ? `frame ${mine.status}…`
                 : "capturing…"}
