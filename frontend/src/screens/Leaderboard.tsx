@@ -14,6 +14,13 @@ const ROASTS = [
 const RECEIPT_BG = ["var(--tint-pink)", "var(--tint-cyan)", "var(--tint-yellow)", "var(--tint-lime)"];
 const RECEIPT_TILT = ["-1deg", "0.5deg", "1deg", "-0.5deg"];
 
+/** 1 -> "1st", 2 -> "2nd", 11 -> "11th": the place a player passed in. */
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
 export function Leaderboard() {
   const game = useGame();
   useFollowServerPhase(game);
@@ -87,6 +94,11 @@ export function Leaderboard() {
                   <Pill thin style={{ fontSize: 13, padding: "4px 10px" }}>
                     {r.delta > 0 ? "cooked" : "survived"}
                   </Pill>
+                  {r.score && (
+                    <Pill thin style={{ fontSize: 13, padding: "4px 10px" }}>
+                      {ordinal(r.score.place)} · {r.score.speed_points} speed · {r.score.accuracy_points} face
+                    </Pill>
+                  )}
                 </div>
                 <span className="col-num result-row__delta">
                   {r.delta > 0 ? `+${r.delta}` : "0"}

@@ -1,5 +1,6 @@
 import type {
   FrameUploadResult,
+  GameConfig,
   GameState,
   LeaveRoomResponse,
   PlayerSession,
@@ -59,6 +60,21 @@ export const api = {
     request<{ rounds_per_game: number }>(
       `/rooms/${encodeURIComponent(roomId)}/rounds?player_id=${encodeURIComponent(playerId)}&rounds=${rounds}`,
       { method: "POST" },
+    ),
+
+  /**
+   * Host only, in the lobby. The server answers 422 with a readable reason when the
+   * schedule would leave the last round too short to play.
+   */
+  setRoundTiming: (
+    roomId: string,
+    playerId: string,
+    roundSeconds: number,
+    roundDecrementSeconds: number,
+  ) =>
+    request<GameConfig>(
+      `/rooms/${encodeURIComponent(roomId)}/config?player_id=${encodeURIComponent(playerId)}`,
+      json({ round_seconds: roundSeconds, round_decrement_seconds: roundDecrementSeconds }),
     ),
 
   /** Host only, after `game_over`: clears every score and returns the room to its lobby. */

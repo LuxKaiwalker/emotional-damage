@@ -2,7 +2,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, 
 
 from app.api.deps import EngineDep, FrameQueueDep, MediaDep, SettingsDep
 from app.capture.queue import FrameJob
-from app.game.engine import GameError
+from app.game.engine import AlreadyPassed, GameError
 
 router = APIRouter(prefix="/api", tags=["capture"])
 
@@ -38,6 +38,11 @@ async def upload_frame(
 
     try:
         accepted = await engine.submit_frame(room_id, player_id, size=len(data))
+    except AlreadyPassed:
+        # The client stops capturing once the snapshot says it passed; this covers the
+        # frames already on their way when that snapshot landed.
+        response.status_code = status.HTTP_200_OK
+        return {"skipped": True, "reason": "passed"}
     except GameError as exc:
         if exc.status_code == 429:
             response.status_code = status.HTTP_200_OK

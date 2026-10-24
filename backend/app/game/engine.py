@@ -8,11 +8,18 @@ Invariants every public method upholds:
 Long sleeps happen *outside* the lock, so a running round never blocks frame ingestion.
 
 The rules this file implements:
-  * Scoring -- a round names a `target` label; a player whose last scored frame of that
-    round carries that label gets `settings.points_per_correct` (one) point for it.
-    Nothing else scores.
+  * Passing -- a round names a `target` label. The first frame of a player's that the
+    processor reads as that label passes them: their slot is frozen on that frame and
+    no more are accepted from them this round. Once every connected player has passed,
+    the round ends early.
+  * Scoring -- only players who passed score, at most 200 a round (see `score_round`):
+    up to 100 for speed (share of the round left when the passing frame was captured,
+    times 1.0 for first, 0.95 for second, ...) and up to 100 for accuracy (the
+    processor's confidence in the passing read). Nothing else scores.
   * Timing -- every round has a deadline, and the game as a whole has one. The game
-    timer wins: it truncates the round that would overrun it and ends the game.
+    timer wins: it truncates the round that would overrun it and ends the game. Round 1
+    runs for `config.round_seconds` and each later round is `round_decrement_seconds`
+    shorter; the host sets both in the lobby.
   * Rooms -- created with a 4-letter join code, restartable once a game is over, and
     destroyed when the last player goes (immediately on leave, or after a grace period
     for players who just closed the tab).
@@ -36,6 +43,7 @@ from app.models import (
     Player,
     ProcessResult,
     Round,
+    RoundScore,
     StateMessage,
     Submission,
     SubmissionStatus,
@@ -50,6 +58,16 @@ MIN_ROUND_SECONDS = 1.0
 ROUND_CHOICES = (5, 10)
 # Headroom on a picked game's timer, so scheduling jitter never costs its last round.
 GAME_SLACK_SECONDS = 5
+
+# Scoring. A round is worth at most SPEED_POINTS + ACCURACY_POINTS to one player.
+SPEED_POINTS = 100
+ACCURACY_POINTS = 100
+# Each place after first keeps 5% less of its speed points: 1.0, 0.95, 0.90, ...
+PLACEMENT_STEP = 0.05
+
+# The shortest round a host may schedule. Below this a player barely gets a frame scored
+# before the round ends, so the last round would be unwinnable.
+SHORTEST_PLAYABLE_ROUND_SECONDS = 3
 
 
 class AcceptedFrame(NamedTuple):
@@ -70,6 +88,41 @@ class GameError(Exception):
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
         self.status_code = status_code
+
+
+class AlreadyPassed(GameError):
+    """A frame from a player who has already passed this round. Normal, not an error."""
+
+    def __init__(self) -> None:
+        super().__init__("already passed this round", status_code=409)
+
+
+def score_round(rnd: Round) -> dict[str, RoundScore]:
+    """Turn a round's passes into points. Pure, so the rule can be tested on its own.
+
+    Placement and time left both come from when the passing frame was *captured*: a
+    player who made the face first should not lose out because their frame took longer
+    to come back from the model. Measured against the round's scheduled window, so ending
+    early when everyone has passed takes nothing away from anyone.
+    """
+    window = (rnd.ends_at - rnd.started_at).total_seconds()
+    ordered = sorted(rnd.passed.items(), key=lambda item: item[1].received_at)
+    scores: dict[str, RoundScore] = {}
+    for index, (player_id, submission) in enumerate(ordered):
+        left = (rnd.ends_at - submission.received_at).total_seconds()
+        share = min(1.0, max(0.0, left / window)) if window > 0 else 0.0
+        placement = max(0.0, 1.0 - PLACEMENT_STEP * index)
+        confidence = submission.result.confidence if submission.result else 0.0
+        speed = round(SPEED_POINTS * share * placement)
+        # ProcessResult caps confidence at 1.0, which is what caps accuracy at 100.
+        accuracy = round(confidence * ACCURACY_POINTS)
+        scores[player_id] = RoundScore(
+            place=index + 1,
+            speed_points=speed,
+            accuracy_points=accuracy,
+            points=speed + accuracy,
+        )
+    return scores
 
 
 class GameEngine:
@@ -121,9 +174,10 @@ class GameEngine:
             players={host.id: host},
             config=GameConfig(
                 round_seconds=self.settings.round_seconds,
+                round_decrement_seconds=self.settings.round_decrement_seconds,
                 rounds_per_game=self.settings.rounds_per_game,
                 game_seconds=self.settings.game_seconds,
-                points_per_correct=self.settings.points_per_correct,
+                max_points_per_round=SPEED_POINTS + ACCURACY_POINTS,
                 capture_interval_ms=self.settings.capture_interval_ms,
                 max_players=self.settings.max_players_per_room,
             ),
@@ -161,6 +215,7 @@ class GameEngine:
                 raise GameError("unknown player for this room", status_code=404)
             if state.round is not None:
                 state.round.submissions.pop(player_id, None)
+                state.round.passed.pop(player_id, None)
 
             if not state.players:
                 await self._destroy(room, reason="empty")
@@ -170,6 +225,8 @@ class GameEngine:
                 state.host_id = self._next_host(state)
             if not any(p.connected for p in state.players.values()):
                 room.empty_since = room.empty_since or utcnow()
+            # The last holdout leaving can be what completes the round.
+            self._end_round_if_all_passed(room)
 
             await self._publish(room, EventMessage(kind="player_left", payload={
                 "player_id": player_id, "name": player.name, "host_id": state.host_id,
@@ -246,6 +303,9 @@ class GameEngine:
                 room.empty_since = None
             elif not any(p.connected for p in room.state.players.values()):
                 room.empty_since = utcnow()
+            else:
+                # Nobody waits on a player who dropped out before passing.
+                self._end_round_if_all_passed(room)
             await self._publish(room)
 
     # --- game lifecycle --------------------------------------------------
@@ -289,13 +349,11 @@ class GameEngine:
                 choices = " or ".join(map(str, ROUND_CHOICES))
                 raise GameError(f"rounds must be {choices}", status_code=422)
 
-            needed = (
-                rounds * self.settings.round_seconds
-                + (rounds - 1) * self.settings.intermission_seconds
-                + GAME_SLACK_SECONDS
+            # Sized from the room's own timing, so a host's longer or shrinking rounds
+            # are what the timer fits -- and ten shrinking rounds can be refused.
+            state.config = self._fit_schedule(
+                state.config.model_copy(update={"rounds_per_game": rounds})
             )
-            state.config.rounds_per_game = rounds
-            state.config.game_seconds = max(self.settings.game_seconds, needed)
             await self._publish(room, EventMessage(kind="config_changed", payload={
                 "rounds_per_game": rounds,
                 "game_seconds": state.config.game_seconds,
@@ -325,6 +383,7 @@ class GameEngine:
                 player.last_frame_at = None
             state.round = None
             state.history = []
+            room.inflight.clear()
             state.phase = Phase.LOBBY
             state.game_no += 1
             state.game_started_at = None
@@ -334,6 +393,60 @@ class GameEngine:
             await self._publish(room, EventMessage(kind="game_restarted", payload={
                 "game_no": state.game_no,
             }))
+
+    async def set_round_timing(
+        self, room_id: str, player_id: str, round_seconds: int, round_decrement_seconds: int
+    ) -> GameConfig:
+        """Host sets round 1's length and how much shorter each later round gets.
+
+        Lobby only, so a running game never changes pace under the players. See
+        `_fit_schedule` for what is refused and how the game timer follows.
+        """
+        room = self.require_room(room_id)
+        async with room.lock:
+            state = room.state
+            if player_id != state.host_id:
+                raise GameError("only the host can change the round timing", status_code=403)
+            if state.phase is not Phase.LOBBY:
+                raise GameError(f"cannot change timing in phase {state.phase.value}", 409)
+
+            state.config = self._fit_schedule(state.config.model_copy(update={
+                "round_seconds": round_seconds,
+                "round_decrement_seconds": round_decrement_seconds,
+            }))
+            await self._publish(room, EventMessage(kind="config_changed", payload={
+                "round_seconds": round_seconds,
+                "round_decrement_seconds": round_decrement_seconds,
+                "game_seconds": state.config.game_seconds,
+            }))
+            return state.config
+
+    def _fit_schedule(self, config: GameConfig) -> GameConfig:
+        """Check a host's schedule whole, and size the game timer to it.
+
+        A last round too short to play is refused rather than clamped: one that silently
+        became 1s is worse than a clear "no". The game timer grows to fit instead, because
+        a cap shorter than the rounds asked for would quietly end the game early, and the
+        deep scan would list fewer rounds than promised. It never drops below
+        GAME_SECONDS, so that stays the floor an operator sets.
+        """
+        rounds = config.rounds_per_game
+        last = config.round_length(rounds)
+        # An operator who configured shorter rounds than that meant it; hosts cannot go below.
+        floor = min(SHORTEST_PLAYABLE_ROUND_SECONDS, self.settings.round_seconds)
+        if last < floor:
+            raise GameError(
+                f"round {rounds} would last {last}s; every round needs at least {floor}s",
+                status_code=422,
+            )
+        needed = (
+            sum(config.round_length(n) for n in range(1, rounds + 1))
+            + (rounds - 1) * self.settings.intermission_seconds
+            + GAME_SLACK_SECONDS
+        )
+        return config.model_copy(
+            update={"game_seconds": max(self.settings.game_seconds, needed)}
+        )
 
     # --- vitals ----------------------------------------------------------
 
@@ -369,6 +482,8 @@ class GameEngine:
                 raise GameError("unknown player for this room", status_code=404)
             if state.phase is not Phase.ROUND or state.round is None:
                 raise GameError(f"not accepting frames in phase {state.phase.value}", 409)
+            if player_id in state.round.passed:
+                raise AlreadyPassed()
 
             now = utcnow()
             min_gap = timedelta(milliseconds=self.settings.min_frame_interval_ms)
@@ -382,8 +497,11 @@ class GameEngine:
                 round_no=state.round.number,
                 received_at=now,
             )
-            # Newest frame per player wins; the previous pending one is simply superseded.
+            # Newest frame per player takes the slot the UI shows. The one it replaces is
+            # still tracked in `inflight`: if that one turns out to be the correct face,
+            # it passes the player all the same.
             state.round.submissions[player_id] = submission
+            room.inflight[submission.id] = submission
             await self._publish(room)
             return AcceptedFrame(submission, state.round.prompt, state.round.target)
 
@@ -401,13 +519,13 @@ class GameEngine:
 
         async with room.lock:
             state = room.state
-            if state.round is None:
-                return
-            submission = next(
-                (s for s in state.round.submissions.values() if s.id == submission_id), None
-            )
-            if submission is None:
-                # Superseded by a newer frame, or the round already moved on. Drop it.
+            submission = room.inflight.pop(submission_id, None)
+            if (
+                state.round is None
+                or submission is None
+                or submission.round_no != state.round.number
+            ):
+                # From a round that has already moved on. Drop it.
                 return
 
             if error is not None:
@@ -428,18 +546,48 @@ class GameEngine:
                     else None
                 )
 
+            player_id = submission.player_id
+            passed_now = (
+                submission.correct is True
+                and player_id in state.players
+                and player_id not in state.round.passed
+            )
+            if passed_now:
+                state.round.passed[player_id] = submission
+                # Freeze the slot on the passing frame, even if a newer one had taken it.
+                state.round.submissions[player_id] = submission
+                self._end_round_if_all_passed(room)
+            elif state.round.submissions.get(player_id) is not submission:
+                # Superseded and not a pass: nothing the player or the rules care about.
+                return
+
             await self._publish(room, EventMessage(kind="submission_scored", payload={
-                "player_id": submission.player_id,
+                "player_id": player_id,
                 "submission_id": submission.id,
                 "status": submission.status.value,
                 "correct": submission.correct,
+                "passed": passed_now,
                 "result": result.model_dump(mode="json") if result else None,
             }))
 
     @staticmethod
     def _is_correct(result: ProcessResult | None, target: str) -> bool:
-        """The whole scoring rule: the processor's label has to be the one asked for."""
+        """The whole passing rule: the processor's label has to be the one asked for."""
         return result is not None and result.label == target
+
+    @staticmethod
+    def _end_round_if_all_passed(room: Room) -> None:
+        """Wake the round driver early once every connected player has passed.
+
+        Caller holds the room lock. Only connected players count, so a closed tab does not
+        hold the round open; with nobody connected the round simply runs out its clock.
+        """
+        state = room.state
+        if state.phase is not Phase.ROUND or state.round is None:
+            return
+        connected = [p.id for p in state.players.values() if p.connected]
+        if connected and all(pid in state.round.passed for pid in connected):
+            room.round_done.set()
 
     # --- round driver ----------------------------------------------------
 
@@ -449,14 +597,19 @@ class GameEngine:
             reason = "rounds_complete"
             rounds = room.state.config.rounds_per_game
             for round_no in range(1, rounds + 1):
-                budget = self._round_budget(room)
+                budget = self._round_budget(room, round_no)
                 if budget is None:
                     reason = "time_up"
                     break
 
                 # The round reports back how long it actually got: `budget` was measured
                 # a moment earlier, and the round's deadline is clamped to the game's.
-                await asyncio.sleep(await self._begin_round(room, round_no, budget))
+                # It ends at that deadline, or sooner once everyone has passed.
+                duration = await self._begin_round(room, round_no, budget)
+                try:
+                    await asyncio.wait_for(room.round_done.wait(), timeout=duration)
+                except TimeoutError:
+                    pass
                 await self._end_round(room)
 
                 if round_no < rounds:
@@ -482,12 +635,14 @@ class GameEngine:
             return 0.0
         return (ends_at - utcnow()).total_seconds()
 
-    def _round_budget(self, room: Room) -> float | None:
-        """How long the next round may run, or None when the game timer has no room left."""
+    def _round_budget(self, room: Room, round_no: int) -> float | None:
+        """How long round `round_no` may run, or None when the game timer has no room left."""
         remaining = self._seconds_left(room)
         if remaining < MIN_ROUND_SECONDS:
             return None
-        return min(float(self.settings.round_seconds), remaining)
+        # The floor only matters for server defaults; host input is validated up front.
+        scheduled = max(float(room.state.config.round_length(round_no)), MIN_ROUND_SECONDS)
+        return min(scheduled, remaining)
 
     async def _begin_round(self, room: Room, round_no: int, seconds: float) -> float:
         """Open a round and return how many seconds it actually runs for."""
@@ -504,6 +659,8 @@ class GameEngine:
             if room.state.round:
                 previous.add(room.state.round.prompt)
             prompt = pick_prompt(round_no, exclude=previous)
+            room.inflight.clear()
+            room.round_done = asyncio.Event()
             room.state.phase = Phase.ROUND
             room.state.round = Round(
                 number=round_no,
@@ -524,22 +681,21 @@ class GameEngine:
             return max(0.0, (ends_at - utcnow()).total_seconds())
 
     async def _end_round(self, room: Room) -> None:
-        """Commit the round: one point to every player whose last frame hit the target."""
+        """Commit the round: score every player who passed, see `score_round`."""
         async with room.lock:
             state = room.state
             state.phase = Phase.SCORING
             awarded: dict[str, int] = {}
             if state.round is not None:
-                target = state.round.target
-                for player_id, submission in state.round.submissions.items():
+                scores = score_round(state.round)
+                for player_id, score in scores.items():
                     player = state.players.get(player_id)
-                    if player is None or submission.status is not SubmissionStatus.DONE:
+                    if player is None:
                         continue
-                    if not self._is_correct(submission.result, target):
-                        continue
-                    player.points += self.settings.points_per_correct
+                    player.points += score.points
                     player.rounds_correct += 1
-                    awarded[player_id] = self.settings.points_per_correct
+                    awarded[player_id] = score.points
+                state.round.scores = scores
                 state.round.points_awarded = awarded
                 state.history.append(state.round.model_copy(deep=True))
 

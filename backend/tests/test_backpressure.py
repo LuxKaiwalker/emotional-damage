@@ -76,8 +76,8 @@ def test_an_evicted_frame_costs_its_player_the_round_but_nobody_else(tmp_path, j
         players = state["players"]
         assert players[second["player_id"]]["points"] == 0, "bob's frame never got processed"
         # The slow processor always answers with the target, so whoever was processed scored.
-        assert players[host["player_id"]]["points"] == 1
-        assert players[third["player_id"]]["points"] == 1
+        assert players[host["player_id"]]["points"] > 0
+        assert players[third["player_id"]]["points"] > 0
 
 
 def test_a_settled_drop_does_not_block_the_next_frame(tmp_path, jpeg):

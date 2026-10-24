@@ -110,10 +110,10 @@ def test_full_round_scores_every_player(client, jpeg):
 
     # Points are committed when the server ends the round, not when a frame is scored.
     state = wait_for(client, room_id, lambda s: s["phase"] == "game_over", timeout=15)
-    expected = 1 if all(s["correct"] for s in subs.values()) else 0
     for player in state["players"].values():
-        assert player["points"] >= expected
-        assert player["points"] == player["rounds_correct"]
+        # Only a pass scores, and a round is worth at most 200.
+        assert (player["points"] > 0) == (player["rounds_correct"] > 0)
+        assert player["points"] <= 200 * player["rounds_correct"]
 
 
 def test_game_reaches_game_over(client):

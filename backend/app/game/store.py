@@ -11,7 +11,7 @@ import string
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from app.models import GameState
+from app.models import GameState, Submission
 
 # Letters only: a join code gets read out loud across a room, and digits invite the
 # classic 0/O and 1/I mix-ups. 26**4 is ~457k codes, which is plenty of headroom for
@@ -42,6 +42,13 @@ class Room:
     # When the room last had nobody connected, or None while someone is. The reaper
     # destroys a room that has been empty longer than EMPTY_ROOM_GRACE_SECONDS.
     empty_since: datetime | None = None
+    # This round's submissions by id, including ones a newer frame has replaced in the
+    # player's slot. A correct face must count even when its result lands after the
+    # player's next frame went up. Server-side only; reset every round.
+    inflight: dict[str, Submission] = field(default_factory=dict)
+    # Set when every connected player has passed, so the round driver can end the round
+    # early instead of sleeping out the clock. Replaced every round.
+    round_done: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class InMemoryRoomStore:

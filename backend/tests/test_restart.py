@@ -42,7 +42,7 @@ def test_game_over_keeps_every_played_round_and_restart_clears_them(hit_client, 
     assert history[-1]["prompt"] == state["round"]["prompt"]
     assert len({r["prompt"] for r in history}) == len(history), "no prompt twice in a game"
     assert history[0]["submissions"][host["player_id"]]["correct"] is True
-    assert history[0]["points_awarded"] == {host["player_id"]: 1}
+    assert history[0]["points_awarded"][host["player_id"]] > 0
 
     hit_client.post(f"/api/rooms/{room_id}/restart", params={"player_id": host["player_id"]})
     assert state_of(hit_client, room_id)["history"] == []

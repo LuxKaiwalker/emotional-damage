@@ -239,7 +239,8 @@ button, input { font-family: inherit; color: var(--ink); }
 .rounds-pick { display: flex; gap: 8px; }
 .rounds-pick__opt { font-family: inherit; color: var(--ink); background: var(--white); padding: 6px 14px; font-size: 15px; cursor: pointer; }
 .rounds-pick__opt[aria-pressed="true"] { background: var(--pink); }
-.seg { display: flex; gap: 8px; }
+.seg { display: flex; gap: 8px; align-items: center; }
+.seg button:disabled { opacity: 0.45; cursor: not-allowed; }
 .seg button {
   font-weight: 700; font-size: 15px; min-width: 44px; height: 44px; border: var(--border-thin);
   border-radius: var(--r-sm); background: var(--white); cursor: pointer;

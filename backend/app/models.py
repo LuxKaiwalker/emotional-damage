@@ -54,8 +54,7 @@ class Player(BaseModel):
     id: str
     name: str
     connected: bool = False
-    # One point per round the player got right. Integer on purpose: the whole scoring rule
-    # is "correct answer -> +1", so there is nothing fractional to represent.
+    # Sum of every round's RoundScore.points: up to 200 per round, rounded to whole points.
     points: int = 0
     rounds_correct: int = 0
     joined_at: datetime = Field(default_factory=utcnow)
@@ -69,6 +68,21 @@ class Player(BaseModel):
     vitals_at: datetime | None = None
 
 
+class RoundScore(BaseModel):
+    """How one player's points for a round were made up. Only players who passed get one."""
+
+    # 1 = first to pass. Ordered by when the passing frame was captured, not when its
+    # result came back, so a slow model cannot reorder the players.
+    place: int
+    # Up to 100: share of the round left when the passing frame was captured, times the
+    # placement factor (1.0 for first, 0.95 for second, ...).
+    speed_points: int
+    # Up to 100: the processor's confidence in the passing read.
+    accuracy_points: int
+    # speed_points + accuracy_points, so at most 200.
+    points: int
+
+
 class Round(BaseModel):
     number: int
     prompt: str
@@ -76,9 +90,15 @@ class Round(BaseModel):
     target: str
     started_at: datetime
     ends_at: datetime
-    # One slot per player: the newest frame wins, which is what you want for live capture.
+    # One slot per player: the newest frame wins, until the player passes -- then the slot
+    # holds the passing frame and no more are accepted from them this round.
     submissions: dict[str, Submission] = Field(default_factory=dict)
-    # Filled in when the server ends the round: player_id -> points gained.
+    # player_id -> the frame that first matched the target. Provisional while the round
+    # runs (placement is settled from capture times when it ends).
+    passed: dict[str, Submission] = Field(default_factory=dict)
+    # Filled in when the server ends the round: the breakdown per player who passed, and
+    # player_id -> points gained (the same totals, kept flat for the leaderboard).
+    scores: dict[str, RoundScore] = Field(default_factory=dict)
     points_awarded: dict[str, int] = Field(default_factory=dict)
     # Uncle Damage's line for this round, and the id of its audio in the voice store.
     # Both start None and are patched in once generation finishes: a TTS round trip takes
@@ -91,12 +111,20 @@ class Round(BaseModel):
 class GameConfig(BaseModel):
     """Echoed to clients so the UI never hardcodes timings."""
 
+    # How long round 1 runs; each later round is `round_decrement_seconds` shorter.
+    # Per room: the host sets both in the lobby, and they survive a restart.
     round_seconds: int
+    round_decrement_seconds: int = 0
     rounds_per_game: int
     game_seconds: int
-    points_per_correct: int
+    # 100 for speed plus 100 for accuracy. Fixed by the rules, echoed for the UI.
+    max_points_per_round: int
     capture_interval_ms: int
     max_players: int
+
+    def round_length(self, round_no: int) -> int:
+        """Scheduled seconds for round `round_no` (1-based), before the game timer clamps it."""
+        return self.round_seconds - (round_no - 1) * self.round_decrement_seconds
 
 
 class GameState(BaseModel):
@@ -147,6 +175,13 @@ class CreateRoomRequest(BaseModel):
 class JoinRoomRequest(BaseModel):
     name: str = Field(min_length=1, max_length=32)
     join_code: str | None = None
+
+
+class RoundTimingRequest(BaseModel):
+    """Host's round timing. The engine checks the schedule as a whole; these are sanity caps."""
+
+    round_seconds: int = Field(ge=1, le=600)
+    round_decrement_seconds: int = Field(ge=0, le=600)
 
 
 class VitalsReport(BaseModel):

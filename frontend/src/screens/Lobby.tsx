@@ -13,6 +13,59 @@ const TAG_BG: Record<string, string> = {
   "NOT READY": "var(--white)",
 };
 
+/** A seconds value with −/+ steppers for the host, or a plain sticker for everyone else. */
+function TimingRow({
+  label,
+  value,
+  step,
+  editable,
+  busy,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  step: number;
+  editable: boolean;
+  busy: boolean;
+  onChange: (next: number) => void;
+}) {
+  const shown = value === undefined ? "…" : `${value}s`;
+  if (!editable || value === undefined) {
+    return (
+      <div className="rules__row">
+        <span>{label}</span>
+        <span className="sticker rules__vibe">{shown}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="rules__row">
+      <span>{label}</span>
+      <span className="seg">
+        <button
+          type="button"
+          aria-label={`${label}: ${step}s less`}
+          disabled={busy || value - step < 0}
+          onClick={() => onChange(value - step)}
+        >
+          −
+        </button>
+        <span className="sticker rules__vibe" aria-live="polite">
+          {shown}
+        </span>
+        <button
+          type="button"
+          aria-label={`${label}: ${step}s more`}
+          disabled={busy}
+          onClick={() => onChange(value + step)}
+        >
+          +
+        </button>
+      </span>
+    </div>
+  );
+}
+
 export function Lobby() {
   const game = useGame();
   useFollowServerPhase(game);
@@ -21,6 +74,8 @@ export function Lobby() {
   const [copied, setCopied] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingTiming, setSavingTiming] = useState(false);
+  const [timingError, setTimingError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!copied) return;
@@ -63,8 +118,29 @@ export function Lobby() {
     }
   };
 
+  // No optimistic update: the new config arrives in the next snapshot like everything
+  // else, and a refused schedule simply never shows up.
+  const setTiming = async (roundSeconds: number, decrement: number) => {
+    if (!session || savingTiming) return;
+    setSavingTiming(true);
+    setTimingError(null);
+    try {
+      await api.setRoundTiming(session.room_id, session.player_id, roundSeconds, decrement);
+    } catch (err) {
+      setTimingError(err instanceof Error ? err.message : "Could not change the timing");
+    } finally {
+      setSavingTiming(false);
+    }
+  };
+
   // The server is the source of truth for both the roster and the rules.
   const config = state?.config;
+  const roundLengths = config
+    ? Array.from(
+        { length: config.rounds_per_game },
+        (_, i) => config.round_seconds - i * config.round_decrement_seconds,
+      )
+    : [];
   const maxPlayers = config?.max_players ?? 0;
   const slots = Array.from({ length: maxPlayers }, (_, i) => roster[i]);
 
@@ -90,7 +166,7 @@ export function Lobby() {
 
             <ChunkyCard className="rules">
               <h2>House rules</h2>
-              {/* Set by the server; the host can switch the round count, everyone sees it. */}
+              {/* The host sets the round count and timing; everyone sees it. */}
               <div className="rules__row">
                 <span>Rounds</span>
                 {isHost ? (
@@ -111,13 +187,36 @@ export function Lobby() {
                   <span className="sticker rules__vibe">{config?.rounds_per_game ?? "…"}</span>
                 )}
               </div>
+              <TimingRow
+                label="Round 1 length"
+                value={config?.round_seconds}
+                step={5}
+                editable={isHost && !!config}
+                busy={savingTiming}
+                onChange={(v) => config && void setTiming(v, config.round_decrement_seconds)}
+              />
+              <TimingRow
+                label="Shorter each round by"
+                value={config?.round_decrement_seconds}
+                step={1}
+                editable={isHost && !!config}
+                busy={savingTiming}
+                onChange={(v) => config && void setTiming(config.round_seconds, v)}
+              />
               <div className="rules__row">
-                <span>Seconds per round</span>
-                <span className="sticker rules__vibe">{config ? `${config.round_seconds}s` : "…"}</span>
+                <span>Round lengths</span>
+                <span className="sticker rules__vibe">
+                  {roundLengths.length ? roundLengths.map((s) => `${s}s`).join(" → ") : "…"}
+                </span>
               </div>
+              {timingError && (
+                <p className="form-error" role="alert">
+                  {timingError}
+                </p>
+              )}
               <div className="rules__row">
-                <span>Points per correct face</span>
-                <span className="sticker rules__vibe">{config?.points_per_correct ?? "…"}</span>
+                <span>Max points per round</span>
+                <span className="sticker rules__vibe">{config?.max_points_per_round ?? "…"}</span>
               </div>
             </ChunkyCard>
           </section>

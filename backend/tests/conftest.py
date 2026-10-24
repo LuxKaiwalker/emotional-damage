@@ -79,7 +79,26 @@ class VerySlowProcessor(SlowProcessor):
     latency_s = 3.0
 
 
+class MarkedProcessor:
+    """Correct only for frames carrying MARK, and slow about it; instant misses otherwise.
+
+    Lets a test send a correct face followed by a wrong one, so the wrong one takes the
+    player's slot before the correct one has been judged.
+    """
+
+    name = "test-marked"
+    MARK = b"<correct-face>"
+    latency_s = 1.0
+
+    async def process(self, frame: bytes, ctx: RoundCtx) -> ProcessResult:
+        if self.MARK in frame:
+            await asyncio.sleep(self.latency_s)
+            return ProcessResult(score=1.0, label=ctx.target, confidence=0.8, meta={})
+        return ProcessResult(score=0.0, label="not-a-real-label", confidence=1.0, meta={})
+
+
 registry.register(HitProcessor)
+registry.register(MarkedProcessor)
 registry.register(MissProcessor)
 registry.register(SlowProcessor)
 registry.register(VerySlowProcessor)

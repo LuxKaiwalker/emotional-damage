@@ -44,7 +44,7 @@ export function Round() {
   const game = useGame();
   useFollowServerPhase(game);
 
-  const { code, state, session, round, me, roster, mySubmission, clockOffsetMs } = game;
+  const { code, state, session, round, me, roster, mySubmission, iPassed, clockOffsetMs } = game;
 
   // Anchored to the server's own round deadline, not a local timer.
   const left = useServerCountdown(round?.ends_at, clockOffsetMs);
@@ -57,7 +57,8 @@ export function Round() {
     playerId: session?.player_id ?? null,
     phase: state?.phase,
     intervalMs: state?.config.capture_interval_ms ?? 500,
-    enabled: spectra.ready && !!session,
+    // Passing ends your round: the server takes no more frames from you until the next.
+    enabled: spectra.ready && !!session && !iPassed,
     capture: spectra.captureFrame,
   });
 
@@ -73,6 +74,8 @@ export function Round() {
   const speaking = left > 0 && !!round?.voice_line;
 
   const m = spectra.measurements;
+  // Until a reading lands, say why: a face-position hint, or the sidecar's own status.
+  const vitalsCaption = spectra.validation || spectra.status;
   const result = mySubmission?.result ?? null;
 
   return (
@@ -158,8 +161,22 @@ export function Round() {
             />
             <MetricTile
               label="Matched"
-              value={mySubmission?.correct === null ? "…" : mySubmission?.correct ? "yes" : "no"}
-              caption={mySubmission ? `frame ${mySubmission.status}` : "no frame scored yet"}
+              value={
+                iPassed
+                  ? "passed!"
+                  : mySubmission?.correct === null
+                    ? "…"
+                    : mySubmission?.correct
+                      ? "yes"
+                      : "no"
+              }
+              caption={
+                iPassed
+                  ? "locked in · waiting for the others"
+                  : mySubmission
+                    ? `frame ${mySubmission.status}`
+                    : "no frame scored yet"
+              }
               bg="var(--tint-lime)"
             />
             {/* Breathing comes from the SmartSpectra sidecar and is forwarded to the server so
@@ -168,7 +185,7 @@ export function Round() {
               label="Breathing"
               value={m?.breathing ?? "--"}
               unit="/min"
-              caption={m ? "live read" : "waiting for vitals"}
+              caption={m ? "live read" : vitalsCaption}
               bg="var(--tint-cyan)"
             />
           </div>

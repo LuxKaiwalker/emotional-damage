@@ -10,7 +10,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- game loop -------------------------------------------------------
+    # Defaults for a new room; the host can change both from the lobby. Round 1 runs for
+    # round_seconds and every round after it is round_decrement_seconds shorter.
     round_seconds: int = 20
+    round_decrement_seconds: int = 0
     # The default for a new room; the host can switch it to 5 or 10 in the lobby.
     rounds_per_game: int = 5
     intermission_seconds: int = 4
@@ -18,8 +21,6 @@ class Settings(BaseSettings):
     # is spent and truncates a round that would overrun it, so a game can never outlive
     # its timer no matter how ROUND_SECONDS and ROUNDS_PER_GAME are set.
     game_seconds: int = 130
-    # What one correct answer is worth. The rule is one point per correct round.
-    points_per_correct: int = 1
 
     # --- rooms -----------------------------------------------------------
     # Join codes are letters only, so they survive being read out loud.

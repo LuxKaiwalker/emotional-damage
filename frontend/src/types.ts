@@ -30,7 +30,7 @@ export interface Player {
   id: string;
   name: string;
   connected: boolean;
-  /** One point per round answered correctly. Integer: there is nothing fractional. */
+  /** Sum of every round's RoundScore.points (up to 200 a round), in whole points. */
   points: number;
   rounds_correct: number;
   joined_at: string;
@@ -44,6 +44,18 @@ export interface Player {
   vitals_at: string | null;
 }
 
+/** One player's points for a round. Only players who passed get one. */
+export interface RoundScore {
+  /** 1 = first to pass, by when the passing frame was captured. */
+  place: number;
+  /** Up to 100: share of the round left at the pass, times 1.0 / 0.95 / 0.90 ... by place. */
+  speed_points: number;
+  /** Up to 100: the processor's confidence in the passing read. */
+  accuracy_points: number;
+  /** speed_points + accuracy_points, at most 200. */
+  points: number;
+}
+
 export interface Round {
   number: number;
   prompt: string;
@@ -51,7 +63,12 @@ export interface Round {
   target: string;
   started_at: string;
   ends_at: string;
+  /** Newest frame per player, frozen on the passing frame once they pass. */
   submissions: Record<string, Submission>;
+  /** player_id -> the frame that passed them. No more frames are taken from them. */
+  passed: Record<string, Submission>;
+  /** Filled in when the server ends the round, for every player who passed. */
+  scores: Record<string, RoundScore>;
   /** player_id -> points gained, filled in when the server ends the round. */
   points_awarded: Record<string, number>;
   /**
@@ -64,10 +81,13 @@ export interface Round {
 }
 
 export interface GameConfig {
+  /** Round 1's length; each later round is `round_decrement_seconds` shorter. Host-set. */
   round_seconds: number;
+  round_decrement_seconds: number;
   rounds_per_game: number;
   game_seconds: number;
-  points_per_correct: number;
+  /** 100 for speed + 100 for accuracy. */
+  max_points_per_round: number;
   capture_interval_ms: number;
   max_players: number;
 }

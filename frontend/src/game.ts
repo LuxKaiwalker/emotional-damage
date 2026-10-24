@@ -5,7 +5,7 @@ import { useGameSocket } from "./hooks/useGameSocket";
 import { lookFor, type Look } from "./avatar";
 import { phasePath } from "./routes";
 import { loadSessionFor, type StoredSession } from "./session";
-import type { GameState, Phase, Player, Round, Submission } from "./types";
+import type { GameState, Phase, Player, Round, RoundScore, Submission } from "./types";
 
 /**
  * The single bridge between the screens and the server.
@@ -22,6 +22,8 @@ export interface Standing {
   rank: number;
   /** Points gained in the round just scored. 0 until the server ends the round. */
   delta: number;
+  /** How `delta` was made up; undefined for a player who did not pass. */
+  score: RoundScore | undefined;
   total: number;
   isMe: boolean;
 }
@@ -43,6 +45,8 @@ export interface Game {
   standings: Standing[];
   /** This player's submission in the current round, if any has been scored. */
   mySubmission: Submission | undefined;
+  /** Whether I have passed this round: the server takes no more frames from me. */
+  iPassed: boolean;
 }
 
 export function useGame(): Game {
@@ -85,6 +89,7 @@ export function useGame(): Game {
         look: lookFor(player),
         rank: i + 1,
         delta: awarded[player.id] ?? 0,
+        score: state.round?.scores[player.id],
         total: player.points,
         isMe: player.id === session?.player_id,
       }));
@@ -92,6 +97,7 @@ export function useGame(): Game {
 
   const mySubmission =
     session && state?.round ? state.round.submissions[session.player_id] : undefined;
+  const iPassed = !!(session && state?.round?.passed[session.player_id]);
 
   return {
     code,
@@ -106,6 +112,7 @@ export function useGame(): Game {
     roster,
     standings,
     mySubmission,
+    iPassed,
   };
 }
 

@@ -4,10 +4,12 @@ from app.api.deps import EngineDep
 from app.game.engine import GameError
 from app.models import (
     CreateRoomRequest,
+    GameConfig,
     GameState,
     JoinRoomRequest,
     LeaveRoomResponse,
     PlayerSession,
+    RoundTimingRequest,
 )
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
@@ -71,6 +73,19 @@ async def set_rounds(
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"rounds_per_game": rounds}
+
+
+@router.post("/{room_id}/config", response_model=GameConfig)
+async def set_round_timing(
+    room_id: str, player_id: str, body: RoundTimingRequest, engine: EngineDep
+) -> GameConfig:
+    """Host only, in the lobby: round 1's length and how much shorter each later round is."""
+    try:
+        return await engine.set_round_timing(
+            room_id, player_id, body.round_seconds, body.round_decrement_seconds
+        )
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @router.post("/{room_id}/restart", status_code=200)
