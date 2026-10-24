@@ -40,3 +40,7 @@ def pick_prompt(round_no: int, exclude: set[str] | None = None) -> Prompt:
     """Pick a prompt, avoiding the given prompt texts when there is anything left to pick."""
     pool = [p for p in PROMPTS if not exclude or p.text not in exclude] or list(PROMPTS)
     return random.choice(pool)
+
+def grab_all_prompts() -> list[Prompt]:
+    """Return a list of all prompts."""
+    return list(PROMPTS)
