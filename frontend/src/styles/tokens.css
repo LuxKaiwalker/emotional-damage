@@ -1,0 +1,29 @@
+:root {
+  /* colours */
+  --ink: #111111;          /* all text, borders, shadows */
+  --yellow: #FFE135;       /* Home, Leaderboard bg; primary buttons */
+  --pink: #FF4FA3;         /* Lobby bg; Create card; highlights */
+  --cyan: #3EC6FF;         /* Join, Winner bg; Join card */
+  --lime: #9BF04B;         /* Round bg; Start / Next buttons */
+  --white: #FFFFFF;
+  --grey: #E8E8E8;         /* last place / "down bad" */
+
+  /* tints used inside cards */
+  --tint-pink: #FFE3F0;
+  --tint-cyan: #DDF4FF;
+  --tint-yellow: #FFF8D6;
+  --tint-lime: #EEFCE0;
+  --webcam: #1D1D24;
+
+  /* shape */
+  --border: 4px solid var(--ink);
+  --border-thin: 3px solid var(--ink);
+  --r-sm: 12px;  --r-md: 18px;  --r-lg: 24px;  --r-xl: 28px;  --r-pill: 999px;
+  --shadow-sm: 4px 4px 0 var(--ink);
+  --shadow-md: 6px 6px 0 var(--ink);
+  --shadow-lg: 10px 10px 0 var(--ink);
+
+  /* type */
+  --font-display: 'Bagel Fat One', cursive;
+  --font-body: 'Fredoka', sans-serif;
+}
