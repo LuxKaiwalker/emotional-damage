@@ -1,139 +1,93 @@
-# Deploying
+# Deploying the backend
 
-`docker-compose.yml` in the repo root is a **dev** convenience (`--reload`, mounted
-source, Vite dev server). It is not what you want on a server. This directory is.
+This box runs the API and nothing else. Players run the frontend from a dev server on
+their own machine, pointed here. `docker-compose.yml` in the repo root is a local dev
+loop, not this.
 
-The shape: nginx serves the built bundle and reverse-proxies the API and WebSocket from
-the same origin; uvicorn runs on `127.0.0.1:8000` under systemd; the optional
-SmartSpectra sidecar runs on `127.0.0.1:3001`.
+One systemd unit, one open port.
 
 ## First run
 
 ```bash
-# the units and nginx vhost hardcode this path
+# the unit hardcodes this path
 sudo mv ~/git/emotional-damage /srv/emotional-damage
-cd /srv/emotional-damage
+cd /srv/emotional-damage/backend
+python3 -m venv .venv && .venv/bin/pip install -e .
 
-cd backend  && python3 -m venv .venv && .venv/bin/pip install -e . && cd ..
-cd frontend && npm ci && npm run build && cd ..
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin edgame
+sudo install -d -m 0750 -o root -g edgame /etc/emotional-damage
+sudo tee /etc/emotional-damage/backend.env >/dev/null <<'ENV'
+# dummy  = label from the frame's SHA-256, ignores the actual face (no key needed)
+# gemini = real vision classification (needs GEMINI_API_KEY)
+PROCESSOR=dummy
+# GEMINI_API_KEY=
+# ELEVENLABS_API_KEY=       # absent -> narration is text, no audio
+MEDIA_DIR=/var/lib/emotional-damage/media
+CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
+ENV
+sudo chmod 0640 /etc/emotional-damage/backend.env
 
-sudo ./deploy/install.sh your.domain
-sudo certbot --nginx -d your.domain
+sudo install -m 0644 /srv/emotional-damage/deploy/ed-backend.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now ed-backend
 ```
 
-Then add your keys to `/etc/emotional-damage/backend.env` and
-`systemctl restart ed-backend`.
+Then open TCP 8000 to the internet. On a Vultr box that lives in the control panel
+(Products -> instance -> Firewall), not in `nft`/`ufw` on the machine, so a clean local
+ruleset is not evidence the port is open.
 
-`GET /api/health` is the one-curl answer to "did my keys land": it reports the active
-processor, `voice.enabled` / `voice.speaks`, queue depth and frames dropped.
+`backend/.env.example` documents every other knob; env vars in `backend.env` win over it.
 
-## Redeploying
+## Check it
 
 ```bash
-cd /srv/emotional-damage && git pull
-cd frontend && npm ci && npm run build        # static files, no restart needed
-sudo systemctl restart ed-backend             # only if backend/ changed
-sudo ./deploy/install.sh your.domain          # only if deploy/ changed
+curl -sS http://127.0.0.1:8000/api/health | python3 -m json.tool   # on the box
+curl -sS --max-time 5 http://<ip>:8000/api/health                  # from elsewhere
 ```
 
-## Four constraints this layout exists to satisfy
+Use `127.0.0.1`, not `localhost`: uvicorn binds IPv4 and `localhost` resolves to `::1`
+first on Debian. `/api/health` is the one-call answer to "did my keys land" — it reports
+the live processor, `voice.enabled` / `voice.speaks`, queue depth and frames dropped.
 
-**HTTPS is mandatory.** `getUserMedia` requires a secure context. Over plain HTTP on
-anything but `localhost` the camera fails silently — no frames, no scoring, usually no
-visible error. Run certbot. See "No domain yet" below if you only have an IP.
-
-**One backend worker.** Rooms, players and scores live in process memory behind a
-per-room `asyncio.Lock`. `--workers 2` is two separate game worlds. Scaling out means
-implementing `app/game/store.py` on Redis first.
-
-**One origin.** The client defaults to a relative `/api` and derives its WebSocket URL
-from `location.host`, so routing everything through one vhost means no `VITE_*` vars at
-build time and no CORS.
-
-**Don't serve out of `/root`.** It's mode 0700 and nginx runs as `www-data`, so every
-static file 403s. Hence `/srv`.
-
-## Backend-only mode (no nginx)
-
-If the box hosts just the API and the UI runs from a dev server elsewhere, skip nginx
-and certbot entirely:
-
-```bash
-sudo systemctl disable --now nginx
-sudo mkdir -p /etc/systemd/system/ed-backend.service.d
-sudo cp deploy/direct-bind.conf /etc/systemd/system/ed-backend.service.d/
-sudo systemctl daemon-reload && sudo systemctl restart ed-backend
-```
-
-Open TCP 8000 instead of 80/443, set
-`CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]` in
-`/etc/emotional-damage/backend.env`, and run the frontend against it:
+## Run the frontend against it
 
 ```bash
 cd frontend && BACKEND_URL=http://<ip>:8000 npm run dev
 ```
 
-No TLS is needed here, and that is not a shortcut: `vite.config.ts` proxies `/api` and
-`/ws` server-side, so the browser only ever talks to `http://localhost:5173` — which is
-a secure context, so the camera works. The HTTPS requirement comes back the moment you
-serve the page itself from this host.
+`vite.config.ts` proxies `/api` and `/ws` there, server-side.
 
-## No domain yet
-
-Let's Encrypt will not issue for a bare IP, so point a free wildcard-DNS hostname at it
-instead. `nip.io` and `sslip.io` resolve `<any-ip>.<domain>` straight to that IP with no
-signup, and certbot treats the result like any other name:
+## Redeploying
 
 ```bash
-sudo ./deploy/install.sh 203.0.113.9.nip.io
-sudo certbot --nginx -d 203.0.113.9.nip.io
+cd /srv/emotional-damage && git pull
+cd backend && .venv/bin/pip install -e . && cd ..   # only if dependencies changed
+sudo systemctl restart ed-backend
 ```
 
-Port 80 has to be reachable from the internet for the HTTP-01 challenge to land.
+## Three constraints worth knowing
 
-If Let's Encrypt refuses those hostnames (they are shared and occasionally
-rate-limited), the fallbacks, in order of how well they hold up in front of real
-players:
+**The camera needs HTTPS.** `getUserMedia` requires a secure context, so this layout
+works *because* the browser only ever talks to `http://localhost:5173` — localhost
+qualifies, and the vite proxy does the remote hop server-side. Serve the page itself
+from this box over plain HTTP and the camera fails silently: page renders, no frames, no
+scoring, no obvious error. Doing that properly means a reverse proxy and a certificate;
+the nginx vhost and installer for it are in git history at `27435d9`
+(`git show 27435d9 -- deploy/nginx.conf`).
 
-1. **A free subdomain** from DuckDNS or similar, then certbot as above. Stable, and it
-   survives an IP change.
-2. **A Cloudflare quick tunnel** — `cloudflared tunnel --url http://localhost:80` prints
-   a `https://*.trycloudflare.com` URL with a valid certificate. Works without touching
-   DNS, and because the client derives its API and WebSocket URLs from
-   `location.host`, no rebuild is needed. The URL changes every restart.
-3. **A self-signed certificate.** The origin still counts as secure once each player
-   clicks through the interstitial, which is a bad thing to ask a room full of people
-   to do, but it does work.
+**One worker.** Rooms, players and scores live in process memory behind a per-room
+`asyncio.Lock`. `--workers 2` is two independent game worlds. Scaling out means
+implementing `app/game/store.py` on Redis first.
 
-`--unsafely-treat-insecure-origin-as-secure=http://<ip>` also works, but only for
-browsers you launch yourself, so it is no use for players on their own phones.
+**`player_id` is not authentication.** It's an opaque id handed out at join and passed
+back as a form field, so anyone who can reach the open port can create rooms and act as
+another player. Fine for a demo box; don't leave it up unattended.
 
-## SmartSpectra sidecar (optional)
-
-Vite inlines `VITE_*` at build time, so this has to happen **before** `npm run build`:
-
-```bash
-echo 'VITE_SPECTRA_WS_URL=wss://your.domain/spectra' >> frontend/.env
-cd frontend && npm run build
-```
-
-Then put the key in `/etc/emotional-damage/spectra.env` and
-`sudo systemctl enable --now ed-spectra`. `WEB_ORIGIN` must equal the page origin
-exactly — no trailing slash — or `verifyClient` 403s every connection.
-
-## Before you point real users at it
-
-`player_id` is not authentication. It's an opaque id handed out at join and passed back
-as a form field, so on a public domain anyone with a room code and an id can act as
-another player. Fine for a demo; add real auth before anything else.
-
-Rooms are destroyed when they empty — immediately when the last player calls `/leave`,
-or `EMPTY_ROOM_GRACE_SECONDS` (60) after the last socket drops. Expect rooms to
-disappear while you're testing alone with the tab closed.
+Also: rooms are destroyed when they empty — immediately when the last player calls
+`/leave`, or `EMPTY_ROOM_GRACE_SECONDS` (60) after the last socket drops. Expect rooms
+to vanish while testing alone with the tab closed.
 
 ## Logs
 
 ```bash
 journalctl -u ed-backend -f
-tail -f /var/log/nginx/emotional-damage.error.log
 ```
