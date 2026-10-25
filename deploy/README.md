@@ -167,7 +167,9 @@ dead tunnel quickly. Without the keepalive, a tunnel whose far end vanished keep
 holding 1080 for hours and every reconnect is refused the forward:
 
 ```bash
-echo 'restrict,port-forwarding,permitlisten="127.0.0.1:1080" <the .pub line>' \
+# restrict alone still runs any command sent with the key; the forced command stops
+# that, and `ssh -N` never asks for one, so the tunnel is unaffected.
+echo 'restrict,port-forwarding,permitlisten="127.0.0.1:1080",command="/usr/sbin/nologin" <the .pub line>' \
   | sudo tee -a /root/.ssh/authorized_keys
 sudo install -m 0644 deploy/sshd-tunnel-keepalive.conf /etc/ssh/sshd_config.d/50-tunnel-keepalive.conf
 sudo sshd -t && sudo systemctl reload ssh
