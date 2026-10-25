@@ -8,7 +8,7 @@ for accuracy (the processor's confidence). Only a pass scores.
 import time
 from datetime import datetime, timedelta, timezone
 
-from app.game.engine import score_round
+from app.game.engine import pick_highlights, score_round
 from app.models import ProcessResult, Round, Submission, SubmissionStatus
 from tests.conftest import (
     MarkedProcessor,
@@ -86,6 +86,34 @@ def test_nobody_who_failed_to_pass_is_scored():
     assert score_round(_round()) == {}
 
 
+# --- the highlight reel ------------------------------------------------------
+
+
+def test_highlights_are_the_three_most_accurate_faces_best_first():
+    rnd = _round(
+        _pass("ann", 1, confidence=0.6),
+        _pass("bob", 2, confidence=0.95),
+        _pass("cat", 3, confidence=0.8),
+        _pass("dan", 4, confidence=0.4),
+    )
+    highlights = pick_highlights(rnd, score_round(rnd))
+    assert [h.player_id for h in highlights] == ["bob", "cat", "ann"]
+    assert [h.accuracy_points for h in highlights] == [95, 80, 60]
+    assert highlights[0].submission_id == "s_bob"
+    assert highlights[0].label == "angry"
+    assert highlights[0].place == 2
+
+
+def test_an_earlier_pass_wins_a_tie_for_the_highlights():
+    rnd = _round(_pass("ann", 5, confidence=0.9), _pass("bob", 1, confidence=0.9))
+    assert [h.player_id for h in pick_highlights(rnd, score_round(rnd))] == ["bob", "ann"]
+
+
+def test_a_round_nobody_passed_has_no_highlights():
+    rnd = _round()
+    assert pick_highlights(rnd, score_round(rnd)) == []
+
+
 # --- through the game ----------------------------------------------------------
 
 
@@ -113,6 +141,13 @@ def test_a_correct_face_scores_speed_plus_accuracy_when_the_round_ends(tmp_path,
         assert player["points"] == score["points"]
         assert player["rounds_correct"] == 1
     assert state["round"]["points_awarded"] == {pid: s["points"] for pid, s in scores.items()}
+    # Both passing frames make the highlight reel, and it is kept with the round.
+    highlights = state["round"]["highlights"]
+    assert {h["player_id"] for h in highlights} == set(scores)
+    assert [h["place"] for h in highlights] == [1, 2]
+    assert state["history"][-1]["highlights"] == highlights
+    for h in highlights:
+        assert client.get(f"/api/media/{h['submission_id']}").status_code == 200
 
 
 def test_a_wrong_answer_scores_nothing(miss_client, jpeg):

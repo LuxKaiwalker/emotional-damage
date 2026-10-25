@@ -40,6 +40,7 @@ from app.models import (
     EventMessage,
     GameConfig,
     GameState,
+    Highlight,
     Phase,
     Player,
     ProcessResult,
@@ -65,6 +66,8 @@ SPEED_POINTS = 100
 ACCURACY_POINTS = 100
 # Each place after first keeps 5% less of its speed points: 1.0, 0.95, 0.90, ...
 PLACEMENT_STEP = 0.05
+# How many of a round's faces make its highlight reel.
+HIGHLIGHT_COUNT = 3
 
 # The shortest round a host may schedule. Below this a player barely gets a frame scored
 # before the round ends, so the last round would be unwinnable.
@@ -131,6 +134,28 @@ def score_round(rnd: Round) -> dict[str, RoundScore]:
             points=speed + accuracy,
         )
     return scores
+
+
+def pick_highlights(rnd: Round, scores: dict[str, RoundScore]) -> list[Highlight]:
+    """The round's best faces: most accurate first, an earlier pass breaking a tie.
+
+    Only passing frames qualify -- a miss has no accuracy to rank, and the frame that
+    passed a player is the one their score was read from.
+    """
+    ranked = sorted(scores.items(), key=lambda item: (-item[1].accuracy_points, item[1].place))
+    highlights: list[Highlight] = []
+    for player_id, score in ranked[:HIGHLIGHT_COUNT]:
+        submission = rnd.passed.get(player_id)
+        if submission is None:
+            continue
+        highlights.append(Highlight(
+            player_id=player_id,
+            submission_id=submission.id,
+            label=submission.result.label if submission.result else rnd.target,
+            accuracy_points=score.accuracy_points,
+            place=score.place,
+        ))
+    return highlights
 
 
 class GameEngine:
@@ -713,6 +738,7 @@ class GameEngine:
                     awarded[player_id] = score.points
                 state.round.scores = scores
                 state.round.points_awarded = awarded
+                state.round.highlights = pick_highlights(state.round, scores)
                 state.history.append(state.round.model_copy(deep=True))
 
             await self._publish(room, EventMessage(kind="round_ended", payload={

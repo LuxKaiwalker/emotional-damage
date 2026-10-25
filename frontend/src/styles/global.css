@@ -350,6 +350,51 @@ button, input { font-family: inherit; color: var(--ink); }
 .receipt__who { font-weight: 700; font-size: 19px; }
 .receipt__value { font-family: var(--font-display); font-size: 32px; line-height: 1.1; }
 .receipt__sub { font-weight: 600; font-size: 14px; }
+/* Hall of faces: the round's top three, pinned up like polaroids. */
+.facehall { display: flex; flex-direction: column; gap: 14px; }
+.facehall__grid { list-style: none; margin: 0; padding: 18px 4px 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 28px 22px; }
+.facecard {
+  position: relative; flex: 0 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 10px;
+  border: var(--border); border-radius: 10px; padding: 14px 14px 16px; box-shadow: var(--shadow-md);
+}
+/* a strip of tape holding it to the wall */
+.facecard::before {
+  content: ""; position: absolute; top: -14px; left: 50%; width: 92px; height: 26px; translate: -50% 0; rotate: -4deg;
+  background: var(--tape); opacity: .9; border: var(--border-thin); border-radius: 4px; z-index: 2;
+}
+.facecard--1 { flex-basis: 300px; }
+.facecard__frame { position: relative; }
+.facecard__photo { aspect-ratio: 1; border: var(--border); border-radius: 6px; overflow: hidden; background: var(--webcam); }
+/* Mirrored, so the face reads the way the player saw it in their own preview. */
+.facecard__photo img { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
+.facecard__photo--standin { display: flex; align-items: center; justify-content: center; background: var(--tint-yellow); }
+.facecard__standin { width: 70%; height: 70%; }
+.facecard__crown { position: absolute; top: -40px; left: -22px; width: 92px; rotate: -18deg; z-index: 3; }
+.facecard__rank {
+  position: absolute; top: 6px; right: -16px; z-index: 3; rotate: 10deg;
+  background: var(--white); border: var(--border-thin); border-radius: var(--r-pill); box-shadow: var(--shadow-sm);
+  font-family: var(--font-display); font-size: 24px; line-height: 1; padding: 6px 12px;
+}
+.facecard__stamp { position: absolute; z-index: 3; right: -26px; bottom: -22px; width: 84px; height: 84px; rotate: -12deg; display: grid; place-items: center; }
+.facecard--1 .facecard__stamp { width: 96px; height: 96px; }
+.facecard__burst { position: absolute; inset: 0; width: 100%; height: 100%; }
+.facecard__pct { position: relative; font-family: var(--font-display); font-size: 22px; line-height: 1; }
+.facecard--1 .facecard__pct { font-size: 26px; }
+.facecard__caption { display: flex; flex-direction: column; gap: 2px; text-align: center; padding-top: 2px; }
+.facecard__award { font-weight: 700; font-size: 13px; letter-spacing: .08em; }
+.facecard__name { font-family: var(--font-display); font-size: 26px; line-height: 1.05; overflow-wrap: anywhere; }
+.facecard__quip { font-weight: 600; font-size: 15px; }
+.facehall__empty {
+  display: flex; align-items: center; gap: 16px; background: var(--white); border: var(--border); border-radius: var(--r-md);
+  box-shadow: 5px 5px 0 var(--ink); padding: 14px 18px; font-weight: 600; font-size: 17px;
+}
+.facehall__empty-face { flex: 0 0 auto; width: 64px; height: 64px; }
+/* Podium order where there is room for it: second, first, third. */
+@media (min-width: 760px) {
+  .facecard--1 { order: 2; }
+  .facecard--2 { order: 1; }
+  .facecard--3 { order: 3; }
+}
 .lb__foot { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; }
 .roast-bubble { background: var(--cyan); border: var(--border); border-radius: var(--r-md); padding: 12px 18px; font-weight: 600; font-size: 17px; box-shadow: 5px 5px 0 var(--ink); flex: 1 1 380px; min-width: 0; }
 
