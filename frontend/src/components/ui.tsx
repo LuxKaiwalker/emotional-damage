@@ -25,8 +25,14 @@ export function PageShell({
   children: ReactNode;
 }) {
   return (
-    <div className={`page dots dots--${bg} ${className}`} style={padding ? { padding } : undefined}>
-      <div className={`page__inner ${innerClassName}`} style={{ maxWidth, gap }}>
+    <div
+      className={`page dots dots--${bg} ${className}`}
+      style={padding ? { padding } : undefined}
+    >
+      <div
+        className={`page__inner ${innerClassName}`}
+        style={{ maxWidth, gap }}
+      >
         {children}
       </div>
     </div>
@@ -60,7 +66,11 @@ export function ChunkyCard({
   id?: string;
 }) {
   return (
-    <Tag className={`card tilt ${className}`} style={tiltStyle(tilt, style)} {...rest}>
+    <Tag
+      className={`card tilt ${className}`}
+      style={tiltStyle(tilt, style)}
+      {...rest}
+    >
       {children}
     </Tag>
   );
@@ -108,11 +118,20 @@ export function Sticker({
   shadow,
   style,
   children,
-}: Tilt & { bg?: string; shadow?: boolean; style?: CSSProperties; children: ReactNode }) {
+}: Tilt & {
+  bg?: string;
+  shadow?: boolean;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
   return (
     <span
       className="sticker tilt"
-      style={tiltStyle(tilt, { background: bg, boxShadow: shadow ? "var(--shadow-sm)" : undefined, ...style })}
+      style={tiltStyle(tilt, {
+        background: bg,
+        boxShadow: shadow ? "var(--shadow-sm)" : undefined,
+        ...style,
+      })}
     >
       {children}
     </span>
@@ -222,7 +241,11 @@ export function MeterBar({
     >
       <div
         className="meter__fill"
-        style={{ width: `${value}%`, background: color, borderRight: divider ? "var(--border-thin)" : undefined }}
+        style={{
+          width: `${value}%`,
+          background: color,
+          borderRight: divider ? "var(--border-thin)" : undefined,
+        }}
       />
     </div>
   );
@@ -235,7 +258,11 @@ export function Countdown({ seconds }: { seconds: number }) {
       <div
         className={`countdown ${done ? "countdown--done" : ""}`}
         role="timer"
-        aria-label={done ? "Time's up" : `${seconds} second${seconds === 1 ? "" : "s"} left`}
+        aria-label={
+          done
+            ? "Time's up"
+            : `${seconds} second${seconds === 1 ? "" : "s"} left`
+        }
       >
         <span className="countdown__num">{done ? "captured!" : seconds}</span>
         <span className="countdown__label">{done ? "nice." : "FACE NOW"}</span>
