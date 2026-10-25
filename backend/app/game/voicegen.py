@@ -54,8 +54,6 @@ OUTPUT_FORMAT = "mp3_44100_128"
 OUTPUT_EXT = "mp3"
 OUTPUT_DIR = BACKEND_DIR / ".media" / "voice"
 REQUEST_TIMEOUT_SECONDS = 30.0
-last_voice_id = ""
-voice_id = ""
 
 
 def generate_voice(text: str, out_dir: Path = OUTPUT_DIR, model_id: str = MODEL_ID) -> Path:
@@ -68,13 +66,8 @@ def generate_voice(text: str, out_dir: Path = OUTPUT_DIR, model_id: str = MODEL_
     if not api_key:
         raise RuntimeError(f"{API_KEY_ENV_VAR} is not set (expected in backend/.env)")
 
-    while voice_id == last_voice_id:
-        voice_id = random.choice(list(VOICE_IDS.values()))
-
-    last_voice_id = voice_id
-
     resp = httpx.post(
-        f"{ELEVENLABS_API_URL}/{voice_id}",
+        f"{ELEVENLABS_API_URL}/{random.choice(list(VOICE_IDS.values()))}",
         params={"output_format": OUTPUT_FORMAT},
         headers={"xi-api-key": api_key, "Accept": "audio/mpeg"},
         json={"text": text, "model_id": model_id, "voice_settings": {
