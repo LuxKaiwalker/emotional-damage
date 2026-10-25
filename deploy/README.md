@@ -10,7 +10,7 @@ the URL. `docker-compose.yml` in the repo root is a local dev loop, not this.
 | `ed-backend.service` | `127.0.0.1:8000` | `/api/`, `/ws/`         |
 | `ed-spectra.service` | `:3001`          | `/spectra/` (optional)  |
 
-The live box is `https://95.179.200.43.nip.io`.
+The live box is `https://emotional-damage.vxliu.com` (95.179.200.43).
 
 ## First run
 
@@ -72,6 +72,42 @@ Write env files as `KEY=value`: no spaces around `=`, no quotes.
 Ports 80 and 443 have to be open in both `ufw` on the box and the Vultr firewall
 (Products -> instance -> Firewall). Port 80 is needed even after TLS is up, for
 certbot's renewal challenge. Don't open 8000 or 3001; nginx is the only way in.
+
+## Moving to a different domain
+
+Nothing in the application code knows the hostname: the client derives `/api` and
+`wss://<host>/ws` from `location.host`. So a move is four pieces of config, two of which
+fail *silently* if you forget them.
+
+Point an A record at the box, wait for it to resolve, then:
+
+```bash
+cd /srv/emotional-damage
+sed 's|__DOMAIN__|<new>|g' deploy/nginx.conf \
+  | sudo tee /etc/nginx/sites-available/emotional-damage >/dev/null
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d <new> --redirect
+
+sudo sed -i 's|^WEB_ORIGIN=.*|WEB_ORIGIN=https://<new>|' /etc/emotional-damage/spectra.env
+sudo systemctl restart ed-spectra
+
+cd frontend && VITE_SPECTRA_WS_URL=wss://<new>/spectra/ npm run build
+```
+
+The two silent ones: `server.js` compares the browser's `Origin` header to `WEB_ORIGIN`
+with `===`, so a stale value 403s every sidecar connection; and Vite inlines
+`VITE_SPECTRA_WS_URL` at build time, so an un-rebuilt bundle still dials the old host.
+Either way the page loads and plays perfectly while **nothing ever scores**, because
+`PROCESSOR=presage` gets its labels from that sidecar. `/api/health` is the tell:
+`presage.players_reading` stays at 0 with a camera open.
+
+Note the vhost claims one `server_name`, and `WEB_ORIGIN` is a single exact string, so
+the old hostname stops working when you switch. Serving two names at once needs the
+sidecar taught to accept a list.
+
+**Behind Cloudflare, use "DNS only" (grey cloud).** Proxied, the HTTP-01 challenge never
+reaches the box, an origin cert for the old name gives 526, an unreachable origin gives
+521, and the edge puts an idle timeout in front of the game socket.
 
 ## No domain
 
