@@ -3,13 +3,32 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import { CringeFace, Mascot, ScreamFace, ShockFace } from "../components/art";
-import { ChunkyButton, ChunkyCard, Modal, PageShell, Pill } from "../components/ui";
+import {
+  ChunkyButton,
+  ChunkyCard,
+  Modal,
+  PageShell,
+  Pill,
+} from "../components/ui";
 import { saveSession } from "../session";
+import askForCameraPermission from "../hooks/useCameraPermission";
 
 const steps = [
-  { color: "var(--pink)", title: "Uncle Damage speaks.", body: "Our voice agent yells a cursed prompt at the whole lobby." },
-  { color: "var(--cyan)", title: "3… 2… 1… FACE.", body: "Pull the expression on webcam before the timer hits zero." },
-  { color: "var(--lime)", title: "Farm aura.", body: "Presage reads your vitals, we score the damage. Leaderboard after every round." },
+  {
+    color: "var(--pink)",
+    title: "Uncle Damage speaks.",
+    body: "Our voice agent yells a cursed prompt at the whole lobby.",
+  },
+  {
+    color: "var(--cyan)",
+    title: "3… 2… 1… FACE.",
+    body: "Pull the expression on webcam before the timer hits zero.",
+  },
+  {
+    color: "var(--lime)",
+    title: "Farm aura.",
+    body: "Presage reads your vitals, we score the damage. Leaderboard after every round.",
+  },
 ];
 
 /** The backend requires a name of 1-32 chars on both create and join. */
@@ -66,8 +85,8 @@ export function Home() {
               DAMAGE
             </h1>
             <p className="home__tagline">
-              An AI yells a prompt. You have 3 seconds to pull the face. Your webcam snitches on your vitals. Most aura
-              wins.
+              An AI yells a prompt. You have 3 seconds to pull the face. Your
+              webcam snitches on your vitals. Most aura wins.
             </p>
           </div>
           <div className="home__faces home__faces--right">
@@ -77,21 +96,36 @@ export function Home() {
         </section>
 
         <section className="home__actions">
-          <ChunkyCard className="action-card" tilt="-1deg" style={{ background: "var(--pink)" }}>
+          <ChunkyCard
+            className="action-card"
+            tilt="-1deg"
+            style={{ background: "var(--pink)" }}
+          >
             <span style={{ alignSelf: "flex-start" }}>
               <Pill>HOST MODE</Pill>
             </span>
             <h2>Create game</h2>
-            <p>Spawn a lobby, get a code, drag your friends into the trenches. The server picks the prompts; no mercy.</p>
-            <ChunkyButton onClick={() => setCreateOpen(true)}>Make a lobby →</ChunkyButton>
+            <p>
+              Spawn a lobby, get a code, drag your friends into the trenches.
+              The server picks the prompts; no mercy.
+            </p>
+            <ChunkyButton onClick={() => setCreateOpen(true)}>
+              Make a lobby →
+            </ChunkyButton>
           </ChunkyCard>
 
-          <ChunkyCard className="action-card" tilt="1deg" style={{ background: "var(--cyan)" }}>
+          <ChunkyCard
+            className="action-card"
+            tilt="1deg"
+            style={{ background: "var(--cyan)" }}
+          >
             <span style={{ alignSelf: "flex-start" }}>
               <Pill>GOT A CODE?</Pill>
             </span>
             <h2>Join game</h2>
-            <p>Your friend sent a 4-letter code. Type it in and accept your fate.</p>
+            <p>
+              Your friend sent a 4-letter code. Type it in and accept your fate.
+            </p>
             <ChunkyButton to="/join">Enter code →</ChunkyButton>
           </ChunkyCard>
         </section>
@@ -105,12 +139,19 @@ export function Home() {
       >
         <Mascot className="modal__face" />
         <h2 id="create-title">What do we call you?</h2>
-        <p id="create-desc">This is the name on the leaderboard when you get cooked.</p>
+        <p id="create-desc">
+          This is the name on the leaderboard when you get cooked.
+        </p>
         <form
           className="name-form"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            void create();
+            const granted = await askForCameraPermission();
+            if (granted) {
+              void create();
+            } else {
+              setError("You need to enable your webcam to play");
+            }
           }}
         >
           <label className="sr-only" htmlFor="host-name">
@@ -132,19 +173,32 @@ export function Home() {
             </p>
           )}
           <div className="modal__actions">
-            <ChunkyButton color="lime" type="submit" disabled={!name.trim() || busy}>
+            <ChunkyButton
+              color="lime"
+              type="submit"
+              disabled={!name.trim() || busy}
+            >
               {busy ? "spawning…" : "Spawn the lobby →"}
             </ChunkyButton>
           </div>
         </form>
       </Modal>
 
-      <Modal open={howOpen} onClose={() => setHowOpen(false)} labelledBy="how-title" className="how">
+      <Modal
+        open={howOpen}
+        onClose={() => setHowOpen(false)}
+        labelledBy="how-title"
+        className="how"
+      >
         <h2 id="how-title">How it works (it's not that deep)</h2>
         <ol className="how__steps">
           {steps.map((s, i) => (
             <li key={s.title} className="how__step">
-              <span className="how__num" style={{ background: s.color }} aria-hidden="true">
+              <span
+                className="how__num"
+                style={{ background: s.color }}
+                aria-hidden="true"
+              >
                 {i + 1}
               </span>
               <p>
