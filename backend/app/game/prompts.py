@@ -43,7 +43,7 @@ PROMPTS = (
 # Every label the game knows about. `app.processing.dummy` draws its fake reads from this
 # list so that the placeholder processor can actually hit a target; a real processor should
 # emit labels from here too, or no answer will ever be judged correct.
-TARGET_LABELS = tuple(dict.fromkeys(p.target for p in PROMPTS))
+TARGET_LABELS = set(dict.fromkeys(p.target for p in PROMPTS))
 
 
 def pick_prompt(round_no: int, exclude: set[str] | None = None) -> Prompt:
