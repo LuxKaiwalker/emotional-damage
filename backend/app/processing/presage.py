@@ -122,16 +122,20 @@ class PresageProcessor(Processor):
             reason = "no_reading" if reading is None else "stale_reading"
             return ProcessResult(score=0.0, label=NO_FACE, confidence=0.0, meta={**meta, "reason": reason})
 
-        label, confidence = judge(reading, ctx.target)
-        return ProcessResult(
-            # `score` is the raw read the UI shows; the point itself comes from the label.
-            score=round(confidence * 10, 2),
-            label=label,
-            confidence=round(confidence, 3),
-            meta={
-                **meta,
-                "stable": reading.stable,
-                "reading_age_ms": round(age_s * 1000),
-                "scores": {k: round(v, 3) for k, v in reading.scores.items()},
-            },
-        )
+        return result_for(reading, ctx.target, {**meta, "reading_age_ms": round(age_s * 1000)})
+
+
+def result_for(reading: Reading, target: str, meta: dict) -> ProcessResult:
+    """The verdict on a reading, shaped like any processor's."""
+    label, confidence = judge(reading, target)
+    return ProcessResult(
+        # `score` is the raw read the UI shows; the point itself comes from the label.
+        score=round(confidence * 10, 2),
+        label=label,
+        confidence=round(confidence, 3),
+        meta={
+            **meta,
+            "stable": reading.stable,
+            "scores": {k: round(v, 3) for k, v in reading.scores.items()},
+        },
+    )

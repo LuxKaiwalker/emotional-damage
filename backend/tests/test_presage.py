@@ -19,7 +19,7 @@ from app.processing.presage import (
     PresageProcessor,
     judge,
 )
-from tests.conftest import create_room, frame_files, make_client, wait_for
+from tests.conftest import TINY_JPEG, create_room, frame_files, make_client, state_of, wait_for
 
 TOKEN = "test-presage-token"
 
@@ -130,34 +130,58 @@ def test_presage_without_a_token_fails_at_startup(tmp_path):
             pass
 
 
-def test_a_pushed_expression_wins_the_round(presage_client, jpeg):
-    """End to end: the sidecar's reading, not the frame's bytes, decides the frame."""
-    host = create_room(presage_client, "alice")
+def start_round(client) -> tuple[str, str, str]:
+    host = create_room(client, "alice")
     room_id, player_id = host["room_id"], host["player_id"]
-
-    res = presage_client.post(f"/api/rooms/{room_id}/start", params={"player_id": player_id})
+    res = client.post(f"/api/rooms/{room_id}/start", params={"player_id": player_id})
     assert res.status_code == 202, res.text
-    state = wait_for(presage_client, room_id, lambda s: s["phase"] == "round")
-    target = state["round"]["target"]
+    state = wait_for(client, room_id, lambda s: s["phase"] == "round")
+    return room_id, player_id, state["round"]["target"]
 
-    # What Presage would say for a face pulling exactly the asked-for expression.
-    top = next(
-        name for name in PRESAGE_EXPRESSIONS
-        if judge_label(name, target) == target
-    )
+
+def test_a_hit_reading_passes_the_player_without_waiting_for_a_frame(presage_client):
+    """The reading itself scores: no upload tick between the face and the point."""
+    room_id, player_id, target = start_round(presage_client)
+    top = next(name for name in PRESAGE_EXPRESSIONS if judge_label(name, target) == target)
+
     res = push(presage_client, room_id, player_id, {name: 0.0 for name in PRESAGE_EXPRESSIONS} | {top: 88.0})
     assert res.status_code == 202, res.text
-
-    res = presage_client.post(
-        f"/api/rooms/{room_id}/frames", data={"player_id": player_id}, files=frame_files(jpeg)
-    )
-    assert res.status_code == 202, res.text
+    assert res.json()["scored"] is True
 
     state = wait_for(presage_client, room_id, lambda s: player_id in s["round"]["passed"])
     result = state["round"]["passed"][player_id]["result"]
     assert result["label"] == target
     assert result["confidence"] == 0.88
-    assert result["meta"]["processor"] == "presage"
+    assert result["meta"]["source"] == "reading"
+
+    # Passed means passed: the next upload is turned away like any other.
+    res = presage_client.post(
+        f"/api/rooms/{room_id}/frames", data={"player_id": player_id}, files=frame_files(TINY_JPEG)
+    )
+    assert res.json() == {"skipped": True, "reason": "passed"}
+
+
+def test_a_miss_reading_scores_nothing_until_a_frame_arrives(presage_client, jpeg):
+    """Misses stay on the upload path, so readings do not broadcast state on their own."""
+    room_id, player_id, target = start_round(presage_client)
+    miss = next(name for name in PRESAGE_EXPRESSIONS if judge_label(name, target) != target)
+
+    res = push(presage_client, room_id, player_id, {name: 0.0 for name in PRESAGE_EXPRESSIONS} | {miss: 90.0})
+    assert res.json()["scored"] is False
+    assert state_of(presage_client, room_id)["round"]["submissions"] == {}
+
+    res = presage_client.post(
+        f"/api/rooms/{room_id}/frames", data={"player_id": player_id}, files=frame_files(jpeg)
+    )
+    assert res.status_code == 202, res.text
+    state = wait_for(
+        presage_client,
+        room_id,
+        lambda s: s["round"]["submissions"].get(player_id, {}).get("status") == "done",
+    )
+    sub = state["round"]["submissions"][player_id]
+    assert sub["correct"] is False
+    assert sub["result"]["label"] == judge_label(miss, target)
 
 
 def judge_label(top: str, target: str) -> str:

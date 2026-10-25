@@ -225,11 +225,11 @@ wss.on("connection", (ws, req) => {
     if (!isBinary || closing || failed) return;
 
     // Binary frame protocol:
-    // 16-byte header:
-    // uint32 width, uint32 height, uint64 timestampUs
+    // 16-byte header: uint32 width, uint32 height, uint64 timestampUs
+    // then the frame as JPEG (browsers since the JPEG switch) or raw RGBA (older ones).
     const packet = Buffer.from(data);
 
-    if (packet.length < 16) return;
+    if (packet.length < 18) return;
 
     const width = packet.readUInt32LE(0);
     const height = packet.readUInt32LE(4);
@@ -242,10 +242,12 @@ wss.on("connection", (ws, req) => {
       height > 720
     ) return;
 
-    const expectedBytes = width * height * 4;
-    if (packet.length !== 16 + expectedBytes) return;
+    const body = packet.subarray(16);
+    const isJpeg = body[0] === 0xff && body[1] === 0xd8;
+    if (!isJpeg && body.length !== width * height * 4) return;
 
-    const frame = { width, height, timestampUs, sentAt: Date.now(), pixels: packet.subarray(16) };
+    // Decoding is left to each session process, so only the ~20 KB JPEG crosses IPC.
+    const frame = { width, height, timestampUs, sentAt: Date.now(), [isJpeg ? "jpeg" : "pixels"]: body };
     for (const session of sessions) {
       if (!dead.has(session.kind)) session.send(frame);
     }

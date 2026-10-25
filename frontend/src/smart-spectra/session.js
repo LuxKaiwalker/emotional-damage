@@ -17,7 +17,7 @@
  * callbacks. The binding reuses the types the SDK registered with koffi.
  *
  * Protocol (IPC, advanced serialization so pixel Buffers cross without base64):
- *   parent -> child  { type: "frame", width, height, timestampUs, pixels }
+ *   parent -> child  { type: "frame", width, height, timestampUs, sentAt, jpeg | pixels }
  *                    { type: "stop" }
  *   child -> parent  { type: "alive" } once a second
  *                    { type: "metrics", metrics } for kind=vitals
@@ -29,6 +29,7 @@ import {
   PixelFormat,
   ProcessingStatus,
   SmartSpectraErrorCode,
+  ValidationCode,
   MetricType,
   breathingMetrics,
   cardioMetrics,
@@ -36,6 +37,11 @@ import {
 } from "@smartspectra/node-sdk";
 import { presage } from "@smartspectra/node-sdk/messages";
 import { createRequire } from "node:module";
+import sharp from "sharp";
+
+// One decode at a time, on one thread: this shares a single core with Presage.
+sharp.concurrency(1);
+sharp.cache(false);
 
 // Resolved from the SDK's own directory, so this is the koffi instance (and the type
 // registry) the SDK already loaded. Signature copied from the SDK's js/ffi.js.
@@ -117,6 +123,10 @@ const sdk = new SmartSpectraSDK({
 });
 let reachedRunning = false;
 let dead = false;
+let lastReadingAt = 0;
+let runningSince = 0;
+let lastFrameAt = 0;
+let lastValidation = null;
 
 sdk.on("metrics", (buffer) => {
   const metrics = decodeMetrics(buffer);
@@ -125,16 +135,24 @@ sdk.on("metrics", (buffer) => {
     if (Object.keys(data).length) tell({ type: "metrics", metrics: data });
   } else {
     const reading = newestExpression(metrics);
-    if (reading) tell({ type: "expression", ...reading });
+    if (reading) {
+      lastReadingAt = Date.now();
+      tell({ type: "expression", ...reading });
+    }
   }
 });
 sdk.on("validationStatus", (code, timestampUs, hint) => {
+  lastValidation = code;
   tell({ type: "validation", code, timestampUs, hint });
 });
 sdk.on("processingStatus", (status) => {
-  if (status === ProcessingStatus.kRunning) reachedRunning = true;
+  if (status === ProcessingStatus.kRunning && !reachedRunning) {
+    reachedRunning = true;
+    runningSince = Date.now();
+  }
   tell({ type: "status", status });
 });
+sdk.on("frameSentThrough", () => acknowledged());
 sdk.on("error", (code, message, retryable) => {
   tell({ type: "error", code, message, retryable });
 });
@@ -152,6 +170,28 @@ if (!session) throw new Error("@smartspectra/node-sdk internals changed: no sess
 // and a live measurement wants the newest frame, not a backlog.
 let pending = null;
 let sending = false;
+
+// Presage takes frames far faster than one core lets it process them, and queues the
+// rest inside its graph: on the VPS with two players a face waited there for seconds
+// before it was read. So at most MAX_UNACKED frames are inside Presage at once, counted
+// back out by 'frameSentThrough'. One keeps the pipeline idle between frames; two
+// measured best (~0.5 s from a changed face to a scored hit, two players, one core);
+// three already starts to queue. The timeout covers acknowledgements that never arrive,
+// so a lost one cannot stall the session.
+const MAX_UNACKED = 2;
+const ACK_TIMEOUT_MS = 500;
+let unacked = 0;
+let ackTimer = null;
+
+function acknowledged() {
+  unacked = Math.max(0, unacked - 1);
+  if (!sending) pump();
+}
+
+function ackTimedOut() {
+  unacked = 0;
+  if (!sending) pump();
+}
 
 // Pixels are copied out of each IPC message into one of two buffers allocated outside
 // the V8 heap: one being read by the native send, one holding the pending frame. The
@@ -193,6 +233,7 @@ let lastErrorAt = 0;
 let idle = null; // resolves the wait in stop() once the in-flight send lands
 
 function pump() {
+  if (unacked >= MAX_UNACKED) return;
   const frame = pending;
   pending = null;
   if (!frame || dead || Date.now() - frame.sentAt > STALE_MS) return;
@@ -202,6 +243,9 @@ function pump() {
   clockUs += KIND === "expressions" ? NOMINAL_STEP_US : Math.min(Math.max(step, 1), MAX_STEP_US);
 
   sending = true;
+  unacked++;
+  clearTimeout(ackTimer);
+  ackTimer = setTimeout(ackTimedOut, ACK_TIMEOUT_MS);
   sendingSlot = frame.slot;
   const err = {};
   sendFrameOffThread.async(
@@ -263,11 +307,45 @@ async function stop() {
   }
 }
 
+// Latest-JPEG mailbox in front of the decoder, for the same reason as the one in front
+// of the SDK: a frame that waited behind others is a frame of a face already gone.
+let toDecode = null;
+let decoding = false;
+
+async function decodeLatest() {
+  decoding = true;
+  while (toDecode && !dead) {
+    const msg = toDecode;
+    toDecode = null;
+    try {
+      const { data, info } = await sharp(msg.jpeg)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      if (info.width !== msg.width || info.height !== msg.height || info.channels !== 4) continue;
+      offer({ ...msg, pixels: data });
+    } catch {
+      // A truncated or corrupt JPEG: drop it, the next one is 33 ms away.
+    }
+  }
+  decoding = false;
+}
+
+function offer(msg) {
+  const slot = intoSlot(msg.pixels);
+  pending = { width: msg.width, height: msg.height, timestampUs: msg.timestampUs, sentAt: msg.sentAt, slot, pixels: slots[slot] };
+  if (!sending) pump();
+}
+
 process.on("message", (msg) => {
   if (msg.type === "frame") {
-    const slot = intoSlot(msg.pixels);
-    pending = { ...msg, slot, pixels: slots[slot] };
-    if (!sending) pump();
+    lastFrameAt = Date.now();
+    if (msg.jpeg) {
+      toDecode = msg;
+      if (!decoding) void decodeLatest();
+    } else {
+      offer(msg);
+    }
   } else if (msg.type === "stop") {
     void stop();
   }
@@ -278,3 +356,28 @@ process.on("disconnect", () => void stop());
 
 // The parent's watchdog: a frozen event loop stops sending these.
 setInterval(() => tell({ type: "alive" }), 1000);
+
+// A session can be running and still never read a face: the expression model is
+// downloaded at start (the SDK cannot cache it without a desktop keyring), and over the
+// proxy that download gets aborted when several sessions start at once. Such a session
+// stays silent for the rest of the game, so give up on it and let the parent start a
+// fresh one. Only while frames are arriving and Presage can see a face (face detection
+// is a separate model, so it still reports one): a player who stepped away is not a
+// broken session.
+const SILENT_LIMIT_MS = 30000;
+if (KIND === "expressions") {
+  setInterval(() => {
+    const waitingSince = Math.max(lastReadingAt, runningSince);
+    const framesArriving = Date.now() - lastFrameAt < 2000;
+    const faceInView = lastValidation !== null && lastValidation !== ValidationCode.kNoFaceFound;
+    if (
+      reachedRunning &&
+      framesArriving &&
+      faceInView &&
+      Date.now() - waitingSince > SILENT_LIMIT_MS
+    ) {
+      console.error(`expressions session silent for ${SILENT_LIMIT_MS} ms; exiting for a restart`);
+      process.exit(1);
+    }
+  }, 5000);
+}

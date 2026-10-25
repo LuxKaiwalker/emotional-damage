@@ -30,6 +30,9 @@ export interface Spectra {
 /** Frames per second sent to the sidecar. Presage wants camera rate. */
 const FEED_FPS = 30;
 
+/** Presage reads expressions fine from these; much lower and faces go soft. */
+const FEED_JPEG_QUALITY = 0.7;
+
 /** How long to wait before reopening a sidecar socket that dropped on its own. */
 const RECONNECT_MS = 3000;
 
@@ -39,7 +42,7 @@ const RECONNECT_MS = 3000;
  * cost each player the first several seconds of every round.
  *
  * One `getUserMedia` feeds two consumers:
- *   - raw RGBA at camera rate -> the SmartSpectra node server (vitals, and the Presage
+ *   - JPEG at camera rate     -> the SmartSpectra node server (vitals, and the Presage
  *     expression read that PROCESSOR=presage scores with -- hence the player's ids)
  *   - JPEG stills on demand   -> the game backend via `captureFrame` (scoring)
  *
@@ -210,17 +213,21 @@ export function useSmartSpectra(opts: {
         };
 
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+        const ctx = canvas.getContext("2d")!;
         const v = video;
         const ws = socket;
 
         const t0 = performance.now();
         let lastTsUs = -1;
+        let encoding = false;
 
         // A timer rather than requestVideoFrameCallback, which only fires for a video
         // that is being drawn on screen -- and this one deliberately is not.
         feed = window.setInterval(() => {
-          if (stopped || ws.readyState !== WebSocket.OPEN || ws.bufferedAmount >= 8_000_000) {
+          // Anything still in the socket's buffer means the uplink is behind. Skipping
+          // this frame keeps what Presage sees current: queued frames would arrive late
+          // and judge a face the player has already changed.
+          if (stopped || encoding || ws.readyState !== WebSocket.OPEN || ws.bufferedAmount > 0) {
             return;
           }
           const width = v.videoWidth;
@@ -235,15 +242,25 @@ export function useSmartSpectra(opts: {
           canvas.width = width;
           canvas.height = height;
           ctx.drawImage(v, 0, 0, width, height);
-          const pixels = ctx.getImageData(0, 0, width, height).data;
-
-          const packet = new ArrayBuffer(16 + pixels.length);
-          const view = new DataView(packet);
-          view.setUint32(0, width, true);
-          view.setUint32(4, height, true);
-          view.setBigUint64(8, BigInt(timestampUs), true);
-          new Uint8Array(packet, 16).set(pixels);
-          ws.send(packet);
+          // JPEG, not raw RGBA: about 20 KB a frame instead of 1.2 MB, which is the
+          // difference between a home uplink keeping up and frames queueing for seconds.
+          encoding = true;
+          canvas.toBlob(
+            async (blob) => {
+              encoding = false;
+              if (!blob || stopped || ws.readyState !== WebSocket.OPEN) return;
+              const jpeg = new Uint8Array(await blob.arrayBuffer());
+              const packet = new ArrayBuffer(16 + jpeg.length);
+              const view = new DataView(packet);
+              view.setUint32(0, width, true);
+              view.setUint32(4, height, true);
+              view.setBigUint64(8, BigInt(timestampUs), true);
+              new Uint8Array(packet, 16).set(jpeg);
+              ws.send(packet);
+            },
+            "image/jpeg",
+            FEED_JPEG_QUALITY,
+          );
         }, 1000 / FEED_FPS);
       } catch (err) {
         console.error(err);

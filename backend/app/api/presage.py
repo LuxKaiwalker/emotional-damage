@@ -15,9 +15,9 @@ import secrets
 from fastapi import APIRouter, Header, HTTPException
 
 from app.api.deps import EngineDep, SettingsDep
-from app.game.engine import GameError
-from app.models import ExpressionReport
-from app.processing.presage import PRESAGE_EXPRESSIONS, READINGS
+from app.game.engine import AlreadyPassed, GameEngine, GameError
+from app.models import ExpressionReport, Phase
+from app.processing.presage import PRESAGE_EXPRESSIONS, READINGS, judge, result_for
 
 router = APIRouter(prefix="/internal/presage", tags=["presage"])
 
@@ -54,4 +54,39 @@ async def report_expression(
         {name: v / 100 for name, v in body.scores.items()},
         body.stable,
     )
-    return {"status": "recorded"}
+    scored = False
+    if settings.processor == "presage":
+        scored = await _score_if_hit(engine, room, body.room_id, body.player_id)
+    return {"status": "recorded", "scored": scored}
+
+
+async def _score_if_hit(engine: GameEngine, room, room_id: str, player_id: str) -> bool:
+    """Pass the player the moment Presage sees the asked-for face.
+
+    Frame uploads arrive every CAPTURE_INTERVAL_MS, so judging only on them made a
+    correct face wait up to that long, plus the upload, before it counted. A hit is
+    scored here instead, through the same submission path an upload takes, so the rate
+    limit, the already-passed check and speed points (from `received_at`, now) all hold.
+    Misses are left to the uploads: a submission per reading would mean a room-wide state
+    broadcast several times a second per player, on a single core.
+    """
+    state = room.state
+    if state.phase is not Phase.ROUND or state.round is None or player_id in state.round.passed:
+        return False
+    reading = READINGS.latest(room_id, player_id)
+    target = state.round.target
+    if reading is None or judge(reading, target)[0] != target:
+        return False
+
+    try:
+        accepted = await engine.submit_frame(room_id, player_id, size=0)
+    except (AlreadyPassed, GameError):
+        # Passed meanwhile, rate-limited by an upload a moment ago, or the round ended.
+        return False
+    result = result_for(
+        reading,
+        accepted.target,
+        {"processor": "presage", "source": "reading", "prompt": accepted.prompt, "target": accepted.target},
+    )
+    await engine.apply_result(room_id, accepted.submission.id, result)
+    return True
