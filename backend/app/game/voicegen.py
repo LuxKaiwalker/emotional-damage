@@ -8,6 +8,7 @@ Import from other modules:  from app.game.voicegen import generate_for_prompt
 """
 
 import os
+import random
 import sys
 import uuid
 from pathlib import Path
@@ -29,7 +30,16 @@ ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 API_KEY_ENV_VAR = "ELEVENLABS_API_KEY"
 # "Jessica": a female premade voice that sounds like a real, expressive young woman talking, not a narrator.
 # Calmer alternative: "Rachel" = 21m00Tcm4TlvDq8ikWAM. Any female voice ID from your ElevenLabs account works.
-VOICE_ID = "cgSgspJ2msm6clMCkdW9"
+VOICE_IDS = {
+    "Jessica": "cgSgspJ2msm6clMCkdW9",
+    "Mark": "UgBBYS2sOqTuMpoF3BR0",
+    "Clara V": "0ggs85h7hrWz8ExXnsBc",
+    "Obina": "ideEOMYLgcyF9rr94ycz",
+    "Katie": "YyRJWuwyhKdMZRRnm464",
+    "Ninja": "DcLiO3XaUWTu3gyon6hW",
+    "Hank": "6F5Zhi321D3Oq7v1oNT4",
+    "Gen Z Male": "meIAcVLBdpuS8AgD0DJV",
+}
 # Lower stability = more emotional range and intensity; eleven_v3 only takes 0.0 (Creative), 0.5 (Natural)
 # or 1.0 (Robust). 0.0 is the most dramatic, 0.5 is safer if takes start sounding unstable or glitchy.
 VOICE_STABILITY = 0.0
@@ -57,7 +67,7 @@ def generate_voice(text: str, out_dir: Path = OUTPUT_DIR, model_id: str = MODEL_
         raise RuntimeError(f"{API_KEY_ENV_VAR} is not set (expected in backend/.env)")
 
     resp = httpx.post(
-        f"{ELEVENLABS_API_URL}/{VOICE_ID}",
+        f"{ELEVENLABS_API_URL}/{random.choice(list(VOICE_IDS.values()))}",
         params={"output_format": OUTPUT_FORMAT},
         headers={"xi-api-key": api_key, "Accept": "audio/mpeg"},
         json={"text": text, "model_id": model_id, "voice_settings": {
@@ -86,7 +96,7 @@ def generate_for_prompt(round_no: int = 1, exclude: set[str] | None = None) -> t
         return text, generate_voice(text, model_id=TAGGED_MODEL_ID)
     if TEXT_SOURCE == "prompts":
         # No Gemini step: speak the prompt exactly as written in prompts.py.
-        return prompt.text, generate_voice(prompt.text)
+        return prompt.text, generate_voice(f"{' '.join([f'[{x}]' for x in range(1, 3)])} prompt.text")
     raise ValueError(f"TEXT_SOURCE must be 'gemini' or 'prompts', got {TEXT_SOURCE!r}")
 
 
