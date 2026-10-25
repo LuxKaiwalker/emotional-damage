@@ -77,9 +77,6 @@ export function Round() {
   const narration = useNarration(round?.audio_id);
   const speaking = left > 0 && !!round?.voice_line;
 
-  const m = spectra.measurements;
-  // Until a reading lands, say why: a face-position hint, or the sidecar's own status.
-  const vitalsCaption = spectra.validation || spectra.status;
   const result = mySubmission?.result ?? null;
 
   return (
@@ -156,7 +153,8 @@ export function Round() {
             <h2 id="snitch-title">Presage reads</h2>
           </div>
           <div className="snitch__reads">
-            {/* The server's actual verdict on the frames you uploaded, stacked full width. */}
+            {/* Just the server's verdict on your frames: the emotion it read, and whether it
+                matched. Vitals still go to the server (useVitalsReporter) but are not shown. */}
             <MetricTile
               label="Server read"
               value={result?.label ?? "--"}
@@ -182,15 +180,6 @@ export function Round() {
                     : "no frame scored yet"
               }
               bg="var(--tint-lime)"
-            />
-            {/* Breathing comes from the SmartSpectra sidecar and is forwarded to the server so
-                the whole room can see it -- but it is never scoring input. */}
-            <MetricTile
-              label="Breathing"
-              value={m?.breathing ?? "--"}
-              unit="/min"
-              caption={m ? "live read" : vitalsCaption}
-              bg="var(--tint-cyan)"
             />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
