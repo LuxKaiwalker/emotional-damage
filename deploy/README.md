@@ -134,13 +134,48 @@ ssh -N -R 1080 root@<this box>     # OpenSSH 7.6+, including Windows' built-in c
 ```
 
 That listens on this box's loopback only, which is what `spectra.env` points at. No
-inbound port is opened on either side. Vitals work for as long as the tunnel is up;
-for an always-on setup, run it from a home server under `autossh` or a systemd unit.
-To check the route, run this on the box (403 = blocked, 405 = reached the API):
+inbound port is opened on either side. To check the route, run this on the box (403 =
+blocked, 405 = reached the API):
 
 ```bash
 curl -sI --proxy socks5h://127.0.0.1:1080 https://cont-api.physiology.presagetech.com/ | head -1
 ```
+
+**Every score depends on this tunnel.** Opened by hand from a laptop, it dies whenever
+the laptop sleeps or changes networks, and every game in that window scores nothing:
+the sidecar logs `COULDNT_CONNECT ... port 1080` (tunnel gone) or `OPERATION_TIMEDOUT`
+(tunnel too slow; Presage calls time out after 3 s). The sidecar retries a refused
+session with backoff, so players recover once the tunnel is back, but nothing scores
+until then. The real fix is Presage allowlisting this box's IP; once they do, delete
+`HTTPS_PROXY` from `spectra.env` and restart `ed-spectra`.
+
+### Always-on tunnel
+
+Run `ed-tunnel.service` under `autossh` on a machine that stays on. It needs a key,
+since a unit cannot type a password. On that machine:
+
+```bash
+sudo pacman -S autossh            # or: sudo apt install -y autossh
+sudo install -d -m 0700 /etc/ed-tunnel
+sudo ssh-keygen -t ed25519 -N '' -C ed-tunnel -f /etc/ed-tunnel/id_ed25519
+sudo cat /etc/ed-tunnel/id_ed25519.pub
+sed 's|__VPS__|<this box>|' deploy/ed-tunnel.service | sudo tee /etc/systemd/system/ed-tunnel.service >/dev/null
+```
+
+On this box, authorize that key for the tunnel and nothing else, and make sshd drop a
+dead tunnel quickly. Without the keepalive, a tunnel whose far end vanished keeps
+holding 1080 for hours and every reconnect is refused the forward:
+
+```bash
+echo 'restrict,port-forwarding,permitlisten="127.0.0.1:1080" <the .pub line>' \
+  | sudo tee -a /root/.ssh/authorized_keys
+sudo install -m 0644 deploy/sshd-tunnel-keepalive.conf /etc/ssh/sshd_config.d/50-tunnel-keepalive.conf
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+Then `sudo systemctl enable --now ed-tunnel` on the always-on machine, and run the
+`curl` check above. Keepalives catch a dead link, not a slow one: if the curl takes
+seconds, that machine's uplink is the problem.
 
 ## How PROCESSOR=presage works
 
