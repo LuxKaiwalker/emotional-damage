@@ -23,6 +23,12 @@ export interface Spectra {
   status: string;
   measurements: SpectraMetrics | null;
   validation: string;
+  /**
+   * Why Presage is not reading this player's face, for the round screen; null while it is,
+   * or before the sidecar has said either way. Under PROCESSOR=presage nothing scores
+   * while this is set.
+   */
+  readerDown: string | null;
   /** Current video frame as a JPEG, for `POST /api/rooms/{id}/frames`. Null until the camera is up. */
   captureFrame: () => Promise<Blob | null>;
 }
@@ -81,6 +87,7 @@ export function useSmartSpectra(opts: {
   const [status, setStatus] = useState("Starting camera...");
   const [measurements, setMeasurements] = useState<SpectraMetrics | null>(null);
   const [validation, setValidation] = useState("");
+  const [readerDown, setReaderDown] = useState<string | null>(null);
   const [restartKey, setRestartKey] = useState(0);
 
   // Kept out of the RGBA loop's canvas on purpose: toBlob is async, and that canvas is
@@ -198,10 +205,15 @@ export function useSmartSpectra(opts: {
             setMeasurements(msg.data);
           } else if (msg.type === "validation") {
             setValidation(msg.hint || "");
+          } else if (msg.type === "reader") {
+            setReaderDown(msg.state === "reading" ? null : msg.message || "Face reader offline");
           } else if (msg.type === "error") {
             // Fatal messages are written for players by the sidecar; the rest are raw SDK
             // or per-frame errors the next frames usually recover from.
-            if (msg.fatal) fatal = msg.message;
+            if (msg.fatal) {
+              fatal = msg.message;
+              setReaderDown(msg.message);
+            }
             setStatus(msg.fatal ? msg.message : "Vitals hiccup, retrying...");
             // Code 11 = timestamp gap; the session is unusable, so start over.
             if (msg.code === 11) restart();
@@ -285,5 +297,5 @@ export function useSmartSpectra(opts: {
     };
   }, [restartKey, roomId, playerId]);
 
-  return { stream, ready, error, status, measurements, validation, captureFrame };
+  return { stream, ready, error, status, measurements, validation, readerDown, captureFrame };
 }

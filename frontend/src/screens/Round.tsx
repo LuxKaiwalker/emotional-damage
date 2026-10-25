@@ -273,6 +273,11 @@ export function Round() {
             <div>aura so far</div>
             <div key={me?.points ?? 0}>{me?.points ?? 0}</div>
           </div>
+          {spectra.readerDown && (
+            <p className="snitch__uplink" role="status">
+              <b>{spectra.readerDown}</b>
+            </p>
+          )}
           <p className="snitch__uplink">
             frames sent {uploader.sent} · skipped {uploader.skipped} · failed {uploader.failed}
             {uploader.lastError ? ` · ${uploader.lastError}` : ""}
