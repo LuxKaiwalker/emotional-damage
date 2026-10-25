@@ -74,6 +74,8 @@ function HighScoreBadge() {
   const games = score.games_played;
   return (
     <div className="high-score" role="status">
+      {/* The server files a best per kind of game, so this label is a fact rather than a
+          hope: a ten-round score cannot land here. See backend/app/game/highscores.py. */}
       <span className="high-score__label">your high score · 5-round classic</span>
       {score.best === null ? (
         <span className="high-score__sub">none yet. finish a 5-round classic game to set one.</span>

@@ -18,6 +18,11 @@ from pydantic import BaseModel, ValidationError
 
 from app.models import GameMode, HighScore, utcnow
 
+# The game the landing page's high score means: five-round classic, the default a new
+# room plays. Scores from any other shape of game are filed under their own key so the
+# headline number always compares like with like -- see `HighScoreStore.key`.
+HEADLINE_ROUNDS = 5
+
 log = logging.getLogger(__name__)
 
 
@@ -45,18 +50,31 @@ class HighScoreStore:
         return self._scores.get(client_id)
 
     @staticmethod
-    def key(client_id: str, mode: GameMode = GameMode.CLASSIC) -> str:
-        """Where one browser's best for one mode is filed.
+    def key(
+        client_id: str,
+        mode: GameMode = GameMode.CLASSIC,
+        rounds: int = HEADLINE_ROUNDS,
+    ) -> str:
+        """Where one browser's best for one *kind* of game is filed.
 
-        Namespaced by mode because the two do not score on the same scale: a blitz total
-        is a few thousand points where a classic game caps at 2000, so a single key would
-        let one blitz permanently bury a browser's real classic best. Classic keeps the
-        bare `client_id`, so every score recorded before this existed still counts.
+        Namespaced because the kinds do not score on one scale, and a shared key makes the
+        number meaningless: a ten-round classic game is worth twice a five-round one, and a
+        blitz total runs to a few thousand. Lumping them together lets the longest game a
+        browser ever played bury the score it actually set at the game everyone else plays.
+
+        Five-round classic -- the default, and what the landing page shows -- keeps the
+        bare `client_id`, so every score recorded before this existed still counts as what
+        it already was.
         """
-        return client_id if mode is GameMode.CLASSIC else f"{client_id}:{mode.value}"
+        if mode is not GameMode.CLASSIC:
+            return f"{client_id}:{mode.value}"
+        return client_id if rounds == HEADLINE_ROUNDS else f"{client_id}:classic{rounds}"
 
     async def record(
-        self, finals: list[tuple[str, str, int]], mode: GameMode = GameMode.CLASSIC
+        self,
+        finals: list[tuple[str, str, int]],
+        mode: GameMode = GameMode.CLASSIC,
+        rounds: int = HEADLINE_ROUNDS,
     ) -> None:
         """Count one finished game for each `(client_id, name, points)`, keeping the best."""
         if not finals:
@@ -64,7 +82,7 @@ class HighScoreStore:
         async with self._lock:
             now = utcnow()
             for raw_id, name, points in finals:
-                client_id = self.key(raw_id, mode)
+                client_id = self.key(raw_id, mode, rounds)
                 prev = self._scores.get(client_id)
                 if prev is None:
                     self._scores[client_id] = HighScore(
