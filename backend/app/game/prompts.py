@@ -28,6 +28,7 @@ PROMPTS = (
     Prompt("scared", "Look scared"),
     Prompt("sad", "Look sad, like you just a massive hackathon because someone nuked the repo"),
     Prompt("surprised", "look surprised! like you just saw a ghost"),
+    Prompt("happy", "look happy, like you just got a promotion at work"),
 )
 
 # Every label the game knows about. `app.processing.dummy` draws its fake reads from this
