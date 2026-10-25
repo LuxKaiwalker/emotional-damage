@@ -82,6 +82,13 @@ class AcceptedFrame(NamedTuple):
     target: str
 
 
+def _not_in_lobby(phase: Phase, action: str) -> str:
+    """Why a lobby-only action was refused, worded for the player who tried it."""
+    if phase is Phase.GAME_OVER:
+        return f"This game is over. Run it back to {action}."
+    return f"The game has already started, so you can't {action} now."
+
+
 class GameError(Exception):
     """Caller did something the rules do not allow. Mapped to 4xx in the API layer."""
 
@@ -147,7 +154,9 @@ class GameEngine:
     def require_room(self, room_id: str) -> Room:
         room = self.store.get(room_id)
         if room is None:
-            raise GameError(f"no such room: {room_id}", status_code=404)
+            raise GameError(
+                "That lobby doesn't exist anymore. Check the code, or start a new one.", 404
+            )
         return room
 
     def resolve(self, room_id_or_code: str) -> Room:
@@ -165,7 +174,7 @@ class GameEngine:
         try:
             join_code = self.store.allocate_join_code(self.settings.join_code_length)
         except CodeExhausted as exc:
-            raise GameError("no join codes available; try again later", 503) from exc
+            raise GameError("Every lobby code is taken right now. Try again in a minute.", 503) from exc
 
         state = GameState(
             room_id=new_id("r"),
@@ -193,7 +202,7 @@ class GameEngine:
         room = self.resolve(room_id)
         async with room.lock:
             if len(room.state.players) >= self.settings.max_players_per_room:
-                raise GameError("room is full", status_code=409)
+                raise GameError("This lobby is full. Ask the host to make room, or start your own.", 409)
             player = Player(id=new_id("p"), name=name)
             room.state.players[player.id] = player
             await self._publish(room, EventMessage(kind="player_joined", payload={
@@ -212,7 +221,7 @@ class GameEngine:
             state = room.state
             player = state.players.pop(player_id, None)
             if player is None:
-                raise GameError("unknown player for this room", status_code=404)
+                raise GameError("You're not in this lobby anymore. Rejoin with the code.", 404)
             if state.round is not None:
                 state.round.submissions.pop(player_id, None)
                 state.round.passed.pop(player_id, None)
@@ -316,11 +325,11 @@ class GameEngine:
         async with room.lock:
             state = room.state
             if player_id != state.host_id:
-                raise GameError("only the host can start the game", status_code=403)
+                raise GameError("Only the host can start the game.", status_code=403)
             if state.phase is not Phase.LOBBY:
-                raise GameError(f"cannot start from phase {state.phase.value}", 409)
+                raise GameError(_not_in_lobby(state.phase, "start a new game"), 409)
             if room.task is not None and not room.task.done():
-                raise GameError("game already running", status_code=409)
+                raise GameError("The game is already running.", status_code=409)
 
             now = utcnow()
             state.game_started_at = now
@@ -342,12 +351,12 @@ class GameEngine:
         async with room.lock:
             state = room.state
             if player_id != state.host_id:
-                raise GameError("only the host can change the rounds", status_code=403)
+                raise GameError("Only the host can change the number of rounds.", status_code=403)
             if state.phase is not Phase.LOBBY:
-                raise GameError(f"cannot change rounds in phase {state.phase.value}", 409)
+                raise GameError(_not_in_lobby(state.phase, "change the rounds"), 409)
             if rounds not in ROUND_CHOICES:
                 choices = " or ".join(map(str, ROUND_CHOICES))
-                raise GameError(f"rounds must be {choices}", status_code=422)
+                raise GameError(f"Pick {choices} rounds.", status_code=422)
 
             # Sized from the room's own timing, so a host's longer or shrinking rounds
             # are what the timer fits -- and ten shrinking rounds can be refused.
@@ -369,13 +378,13 @@ class GameEngine:
         async with room.lock:
             state = room.state
             if player_id != state.host_id:
-                raise GameError("only the host can restart the game", status_code=403)
+                raise GameError("Only the host can run it back.", status_code=403)
             if state.phase is not Phase.GAME_OVER:
                 raise GameError(
-                    f"can only restart after a game is over (phase {state.phase.value})", 409
+                    "You can only run it back once the game is over.", 409
                 )
             if room.task is not None and not room.task.done():
-                raise GameError("game still running", status_code=409)
+                raise GameError("The game is still wrapping up. Try again in a second.", 409)
 
             for player in state.players.values():
                 player.points = 0
@@ -406,9 +415,9 @@ class GameEngine:
         async with room.lock:
             state = room.state
             if player_id != state.host_id:
-                raise GameError("only the host can change the round timing", status_code=403)
+                raise GameError("Only the host can change the round timing.", status_code=403)
             if state.phase is not Phase.LOBBY:
-                raise GameError(f"cannot change timing in phase {state.phase.value}", 409)
+                raise GameError(_not_in_lobby(state.phase, "change the round timing"), 409)
 
             state.config = self._fit_schedule(state.config.model_copy(update={
                 "round_seconds": round_seconds,
@@ -436,7 +445,8 @@ class GameEngine:
         floor = min(SHORTEST_PLAYABLE_ROUND_SECONDS, self.settings.round_seconds)
         if last < floor:
             raise GameError(
-                f"round {rounds} would last {last}s; every round needs at least {floor}s",
+                f"That timing leaves round {rounds} only {max(last, 0)}s. Every round needs at"
+                f" least {floor}s: make round 1 longer or the drop per round smaller.",
                 status_code=422,
             )
         needed = (
@@ -465,7 +475,7 @@ class GameEngine:
         async with room.lock:
             player = room.state.players.get(player_id)
             if player is None:
-                raise GameError("unknown player for this room", status_code=404)
+                raise GameError("You're not in this lobby anymore. Rejoin with the code.", 404)
             player.vitals = metrics
             player.vitals_at = utcnow()
             await self._publish(room)
@@ -479,9 +489,9 @@ class GameEngine:
             state = room.state
             player = state.players.get(player_id)
             if player is None:
-                raise GameError("unknown player for this room", status_code=404)
+                raise GameError("You're not in this lobby anymore. Rejoin with the code.", 404)
             if state.phase is not Phase.ROUND or state.round is None:
-                raise GameError(f"not accepting frames in phase {state.phase.value}", 409)
+                raise GameError("No round is running, so there's no face to send yet.", 409)
             if player_id in state.round.passed:
                 raise AlreadyPassed()
 
