@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { GameShell } from "./components/GameShell";
 import { Home } from "./screens/Home";
 import { Join } from "./screens/Join";
 import { Leaderboard } from "./screens/Leaderboard";
@@ -12,10 +13,13 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/join" element={<Join />} />
-      <Route path="/lobby/:code" element={<Lobby />} />
-      <Route path="/play/:code" element={<Round />} />
-      <Route path="/play/:code/results" element={<Leaderboard />} />
-      <Route path="/play/:code/winner" element={<Winner />} />
+      {/* One camera and Presage session for the whole game; see GameShell. */}
+      <Route element={<GameShell />}>
+        <Route path="/lobby/:code" element={<Lobby />} />
+        <Route path="/play/:code" element={<Round />} />
+        <Route path="/play/:code/results" element={<Leaderboard />} />
+        <Route path="/play/:code/winner" element={<Winner />} />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

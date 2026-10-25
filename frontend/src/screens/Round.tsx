@@ -1,10 +1,12 @@
+import { useCallback } from "react";
+
 import { useFollowServerPhase, useGame } from "../game";
 import { useFrameUploader } from "../hooks/useFrameUploader";
 import { useNarration } from "../hooks/useNarration";
 import { useServerCountdown } from "../hooks/useServerCountdown";
-import { useSmartSpectra } from "../hooks/useSmartSpectra";
 import { useVitalsReporter } from "../hooks/useVitalsReporter";
 import { UncleDamage } from "../components/art";
+import { useSpectra } from "../components/GameShell";
 import { LeaveGame } from "../components/LeaveGame";
 import {
   Avatar,
@@ -19,17 +21,25 @@ import {
 const BAR_HEIGHTS = [10, 22, 14, 28, 18, 24, 8, 20];
 
 function Webcam({
-  videoRef,
+  stream,
   ready,
   error,
 }: {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
+  stream: MediaStream | null;
   ready: boolean;
   error: string | null;
 }) {
+  // A preview of the game's camera, which GameShell keeps running between rounds.
+  const attach = useCallback(
+    (video: HTMLVideoElement | null) => {
+      if (video && video.srcObject !== stream) video.srcObject = stream;
+    },
+    [stream],
+  );
+
   return (
     <section className="webcam" aria-label="Your webcam">
-      <video ref={videoRef} autoPlay muted playsInline hidden={!ready} />
+      <video ref={attach} autoPlay muted playsInline hidden={!ready} />
       {error && (
         <p className="webcam__msg">
           <b>camera said no</b>
@@ -49,10 +59,8 @@ export function Round() {
   // Anchored to the server's own round deadline, not a local timer.
   const left = useServerCountdown(round?.ends_at, clockOffsetMs);
 
-  const spectra = useSmartSpectra({
-    roomId: session?.room_id ?? null,
-    playerId: session?.player_id ?? null,
-  });
+  // Started in the lobby and kept running all game; see GameShell.
+  const spectra = useSpectra();
 
   // One camera, two consumers: raw frames to the Presage sidecar (vitals and the expression
   // read the server scores with), JPEG stills to the game server.
@@ -149,7 +157,7 @@ export function Round() {
       </ChunkyCard>
 
       <div className="round__main">
-        <Webcam videoRef={spectra.videoRef} ready={spectra.ready} error={spectra.error} />
+        <Webcam stream={spectra.stream} ready={spectra.ready} error={spectra.error} />
 
         <ChunkyCard as="aside" className="snitch" aria-labelledby="snitch-title">
           <div className="snitch__head">
