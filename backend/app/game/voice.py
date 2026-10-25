@@ -153,7 +153,8 @@ class VoiceStudio:
 
         async with httpx.AsyncClient(timeout=voicegen.REQUEST_TIMEOUT_SECONDS) as client:
             resp = await client.post(
-                f"{voicegen.ELEVENLABS_API_URL}/{voicegen.VOICE_ID}",
+                # Asked for per line, so each round gets a different announcer.
+                f"{voicegen.ELEVENLABS_API_URL}/{voicegen.pick_voice_id()}",
                 params={"output_format": voicegen.OUTPUT_FORMAT},
                 headers={
                     "xi-api-key": self.settings.elevenlabs_api_key or "",

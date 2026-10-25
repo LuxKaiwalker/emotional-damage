@@ -219,3 +219,138 @@ def test_disabled_studio_narrates_nothing(tmp_path):
         VoiceStore(tmp_path / "voice", 60), Settings(media_dir=tmp_path / "m")
     )
     assert asyncio.run(studio.narrate(None)) is None
+
+
+# --- the ElevenLabs seam ---------------------------------------------------
+#
+# `voice.py` reaches into `voicegen` for the voice, the model and the knobs. Nothing else
+# couples them, so a rename on one side fails silently on the other: the synthesis call
+# raises, `narrate` catches it, and the round is published with its line as text and no
+# audio. The game looks fine and simply never speaks. These pin that seam.
+
+
+def test_voicegen_exposes_everything_voice_py_reaches_for():
+    """The names `VoiceStudio._synthesize` uses, checked without an API key in sight."""
+    from app.game import voicegen
+
+    for attr in (
+        "ELEVENLABS_API_URL",
+        "OUTPUT_FORMAT",
+        "MODEL_ID",
+        "TAGGED_MODEL_ID",
+        "VOICE_STABILITY",
+        "VOICE_SIMILARITY_BOOST",
+        "VOICE_STYLE",
+        "VOICE_SPEAKER_BOOST",
+        "REQUEST_TIMEOUT_SECONDS",
+        "pick_voice_id",
+    ):
+        assert hasattr(voicegen, attr), f"voice.py reads voicegen.{attr}, which is gone"
+
+
+def test_pick_voice_id_returns_a_configured_voice():
+    from app.game import voicegen
+
+    ids = set(voicegen.VOICE_IDS.values())
+    assert ids, "no voices configured"
+    for _ in range(50):
+        assert voicegen.pick_voice_id() in ids
+
+
+def test_pick_voice_id_never_repeats_immediately():
+    """Several voices exist so the announcer changes; twice in a row reads as a bug."""
+    from app.game import voicegen
+
+    picks = [voicegen.pick_voice_id() for _ in range(60)]
+    repeats = [(i, a) for i, (a, b) in enumerate(zip(picks, picks[1:])) if a == b]
+    assert repeats == [], f"same voice twice running at {repeats}"
+    assert len(set(picks)) > 1, "it should actually vary"
+
+
+def test_pick_voice_id_survives_a_single_configured_voice(monkeypatch):
+    """Excluding the last one must not leave nothing to choose from."""
+    from app.game import voicegen
+
+    monkeypatch.setattr(voicegen, "VOICE_IDS", {"Only": "solo-voice"})
+    monkeypatch.setattr(voicegen, "_last_voice_id", "solo-voice")
+    assert voicegen.pick_voice_id() == "solo-voice"
+
+
+async def test_synthesis_asks_elevenlabs_for_a_real_voice(tmp_path, monkeypatch):
+    """End to end through `VoiceStudio._synthesize`, with the HTTP call captured.
+
+    The URL has to end in an id from VOICE_IDS. When `voicegen.VOICE_ID` was deleted this
+    raised AttributeError instead, and every round went out silent.
+    """
+    import httpx
+
+    from app.config import Settings
+    from app.game import voicegen
+    from app.game.voice import VoiceStudio
+
+    seen = {}
+
+    class FakeResponse:
+        content = b"ID3audio"
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, **kw):
+            seen["url"] = url
+            seen["model_id"] = kw["json"]["model_id"]
+            seen["text"] = kw["json"]["text"]
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    settings = Settings(media_dir=tmp_path / "media", elevenlabs_api_key="k")
+    studio = VoiceStudio(settings=settings, store=_VoiceStoreStub())
+
+    audio = await studio._synthesize("Look angry.", tagged=False)
+    assert audio == b"ID3audio"
+    assert seen["text"] == "Look angry."
+    assert seen["model_id"] == voicegen.MODEL_ID
+    assert seen["url"].rsplit("/", 1)[-1] in set(voicegen.VOICE_IDS.values())
+
+
+def test_the_prompts_source_speaks_the_prompt_itself(monkeypatch):
+    """`TEXT_SOURCE = "prompts"` means "say the prompt", not "say something about it".
+
+    This read `f"... prompt.text"` for a while, which asked ElevenLabs to pronounce the
+    literal words "prompt dot text" while the screen showed the real line.
+    """
+    from app.game import voicegen
+
+    spoken = {}
+
+    def fake_generate_voice(text, **kw):
+        spoken["text"] = text
+        return tmp_file()
+
+    def tmp_file():
+        from pathlib import Path
+
+        return Path("/dev/null")
+
+    monkeypatch.setattr(voicegen, "TEXT_SOURCE", "prompts")
+    monkeypatch.setattr(voicegen, "generate_voice", fake_generate_voice)
+
+    text, _ = voicegen.generate_for_prompt()
+    assert spoken["text"] == text, "the spoken line must be the prompt that was returned"
+    assert "prompt.text" not in spoken["text"]
+    assert "[" not in spoken["text"], "MODEL_ID is not tag-aware; tags would be read aloud"
+
+
+class _VoiceStoreStub:
+    async def write(self, audio_id, data):
+        return None

@@ -56,6 +56,25 @@ OUTPUT_DIR = BACKEND_DIR / ".media" / "voice"
 REQUEST_TIMEOUT_SECONDS = 30.0
 
 
+# The voice used for the last line, so the next one can be somebody else. Module state is
+# fine here: there is one narrator at a time and nothing depends on which voice it was.
+_last_voice_id: str | None = None
+
+
+def pick_voice_id() -> str:
+    """A voice for one line, never the same one twice running.
+
+    A different announcer each round is the point of having several; hearing the same one
+    twice in a row reads as the randomiser being broken. Falls back to the full list when
+    excluding the last one would leave nothing, so a single configured voice still works
+    (and, unlike a `while` loop over the same condition, always terminates).
+    """
+    global _last_voice_id
+    choices = [v for v in VOICE_IDS.values() if v != _last_voice_id] or list(VOICE_IDS.values())
+    _last_voice_id = random.choice(choices)
+    return _last_voice_id
+
+
 def generate_voice(text: str, out_dir: Path = OUTPUT_DIR, model_id: str = MODEL_ID) -> Path:
     """Synthesize `text` with ElevenLabs and return the path of the saved audio file.
 
@@ -67,7 +86,7 @@ def generate_voice(text: str, out_dir: Path = OUTPUT_DIR, model_id: str = MODEL_
         raise RuntimeError(f"{API_KEY_ENV_VAR} is not set (expected in backend/.env)")
 
     resp = httpx.post(
-        f"{ELEVENLABS_API_URL}/{random.choice(list(VOICE_IDS.values()))}",
+        f"{ELEVENLABS_API_URL}/{pick_voice_id()}",
         params={"output_format": OUTPUT_FORMAT},
         headers={"xi-api-key": api_key, "Accept": "audio/mpeg"},
         json={"text": text, "model_id": model_id, "voice_settings": {
@@ -95,8 +114,10 @@ def generate_for_prompt(round_no: int = 1, exclude: set[str] | None = None) -> t
         text = geminiprompts.generate_for_prompt(prompt)
         return text, generate_voice(text, model_id=TAGGED_MODEL_ID)
     if TEXT_SOURCE == "prompts":
-        # No Gemini step: speak the prompt exactly as written in prompts.py.
-        return prompt.text, generate_voice(f"{' '.join([f'[{x}]' for x in range(1, 3)])} prompt.text")
+        # No Gemini step: speak the prompt exactly as written in prompts.py. Note the
+        # text goes in unadorned -- MODEL_ID is not tag-aware, so any [tags] prefixed
+        # here would be read out loud rather than acted on.
+        return prompt.text, generate_voice(prompt.text)
     raise ValueError(f"TEXT_SOURCE must be 'gemini' or 'prompts', got {TEXT_SOURCE!r}")
 
 
