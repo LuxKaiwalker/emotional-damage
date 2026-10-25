@@ -69,7 +69,7 @@ export function useFrameUploader(opts: {
       } catch (err) {
         failures += 1;
         delay = intervalMs * Math.min(2 ** failures, 8);
-        setStatus((s) => ({ ...s, failed: s.failed + 1, lastError: String(err) }));
+        setStatus((s) => ({ ...s, failed: s.failed + 1, lastError: err instanceof Error ? err.message : "upload failed" }));
       }
 
       if (!stopped) handle = window.setTimeout(() => void run(), delay);

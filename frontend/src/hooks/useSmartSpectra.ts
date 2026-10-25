@@ -37,6 +37,23 @@ export interface Spectra {
  * MediaStreams off one device. The SmartSpectra socket is optional: if the node server is
  * not running, the camera and `captureFrame` still work and only the vitals go missing.
  */
+/** getUserMedia's DOMException names, as something a player can fix. */
+function cameraErrorMessage(err: unknown): string {
+  switch (err instanceof DOMException ? err.name : "") {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Camera access is blocked. Allow the camera for this site in your browser, then reload.";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "No usable camera found. Plug one in, then reload.";
+    case "NotReadableError":
+    case "AbortError":
+      return "Your camera is busy in another app or tab. Close it there, then reload.";
+    default:
+      return "Couldn't start your camera. Reload the page to try again.";
+  }
+}
+
 export function useSmartSpectra(): Spectra {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [ready, setReady] = useState(false);
@@ -135,8 +152,10 @@ export function useSmartSpectra(): Spectra {
           } else if (msg.type === "validation") {
             setValidation(msg.hint || "");
           } else if (msg.type === "error") {
+            // Fatal messages are written for players by the sidecar; the rest are raw SDK
+            // or per-frame errors the next frames usually recover from.
             if (msg.fatal) fatal = msg.message;
-            setStatus(msg.message);
+            setStatus(msg.fatal ? msg.message : "Vitals hiccup, retrying...");
             // Code 11 = timestamp gap; the session is unusable, so start over.
             if (msg.code === 11) restart();
           } else if (msg.type === "status") {
@@ -190,7 +209,7 @@ export function useSmartSpectra(): Spectra {
         vfc = v.requestVideoFrameCallback(onVideoFrame);
       } catch (err) {
         console.error(err);
-        setError(err instanceof Error ? err.message : "Could not start camera or connection");
+        setError(cameraErrorMessage(err));
         setStatus("Could not start camera or connection");
       }
     }

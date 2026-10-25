@@ -18,6 +18,7 @@ function TimingRow({
   label,
   value,
   step,
+  min,
   editable,
   busy,
   onChange,
@@ -25,6 +26,8 @@ function TimingRow({
   label: string;
   value: number | undefined;
   step: number;
+  /** The lowest value the server accepts, so "−" never sends one it will refuse. */
+  min: number;
   editable: boolean;
   busy: boolean;
   onChange: (next: number) => void;
@@ -45,8 +48,8 @@ function TimingRow({
         <button
           type="button"
           aria-label={`${label}: ${step}s less`}
-          disabled={busy || value - step < 0}
-          onClick={() => onChange(value - step)}
+          disabled={busy || value <= min}
+          onClick={() => onChange(Math.max(min, value - step))}
         >
           −
         </button>
@@ -191,6 +194,7 @@ export function Lobby() {
                 label="Round 1 length"
                 value={config?.round_seconds}
                 step={5}
+                min={1}
                 editable={isHost && !!config}
                 busy={savingTiming}
                 onChange={(v) => config && void setTiming(v, config.round_decrement_seconds)}
@@ -199,6 +203,7 @@ export function Lobby() {
                 label="Shorter each round by"
                 value={config?.round_decrement_seconds}
                 step={1}
+                min={0}
                 editable={isHost && !!config}
                 busy={savingTiming}
                 onChange={(v) => config && void setTiming(config.round_seconds, v)}

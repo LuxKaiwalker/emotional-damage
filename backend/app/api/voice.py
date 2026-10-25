@@ -17,5 +17,5 @@ router = APIRouter(prefix="/api", tags=["voice"])
 async def get_voice(audio_id: str, store: VoiceStoreDep) -> Response:
     path = store.find(audio_id)
     if path is None:
-        raise HTTPException(404, "audio not found or expired")
+        raise HTTPException(404, "That voice line has expired.")
     return Response(content=await store.read(path), media_type="audio/mpeg")

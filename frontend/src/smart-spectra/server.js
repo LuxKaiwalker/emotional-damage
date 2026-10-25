@@ -132,7 +132,8 @@ wss.on("connection", (ws) => {
   } catch (error) {
     send({
       type: "error",
-      message: "Could not start measurement session",
+      fatal: true,
+      message: "Vitals couldn't start. Reload the page to try again.",
     });
     ws.close(1011, "SDK initialization failed");
     console.error("SDK initialization failed:", error);

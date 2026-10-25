@@ -31,12 +31,12 @@ async def report_vitals(
 ) -> dict:
     """Record one vitals sample for a player. Accepted in any phase, scored in none."""
     if not settings.vitals_enabled:
-        raise HTTPException(503, "vitals reporting is disabled")
+        raise HTTPException(503, "Vitals are switched off on this server.")
 
     # Untrusted input that ends up in every snapshot, so it stays small and flat.
     if len(body.metrics) > settings.max_vitals_fields:
         raise HTTPException(
-            413, f"at most {settings.max_vitals_fields} vitals fields per report"
+            413, f"Too many vitals in one report (the limit is {settings.max_vitals_fields})."
         )
 
     try:

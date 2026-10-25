@@ -28,13 +28,15 @@ async def upload_frame(
     simply carry on to its next tick.
     """
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(415, f"expected JPEG, got {file.content_type!r}")
+        raise HTTPException(415, "Camera frames have to be JPEG images.")
 
     data = await file.read()
     if not data:
-        raise HTTPException(400, "empty frame")
+        raise HTTPException(400, "That camera frame came through empty.")
     if len(data) > settings.max_frame_bytes:
-        raise HTTPException(413, f"frame exceeds {settings.max_frame_bytes} bytes")
+        raise HTTPException(
+            413, f"That camera frame is too big (the limit is {settings.max_frame_bytes // 1024} KB)."
+        )
 
     try:
         accepted = await engine.submit_frame(room_id, player_id, size=len(data))
@@ -76,5 +78,5 @@ async def get_frame(submission_id: str, media: MediaDep) -> Response:
     """Serve a stored frame. Debugging and round replay; not part of the game loop."""
     path = media.find(submission_id)
     if path is None:
-        raise HTTPException(404, "frame not found or expired")
+        raise HTTPException(404, "That frame has expired.")
     return Response(content=await media.read(path), media_type="image/jpeg")

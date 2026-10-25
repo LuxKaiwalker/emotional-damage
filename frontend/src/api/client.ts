@@ -20,16 +20,85 @@ export class ApiError extends Error {
   }
 }
 
+/** What each request field is called on screen, for validation messages. */
+const FIELD_LABELS: Record<string, string> = {
+  name: "Your name",
+  join_code: "The lobby code",
+  round_seconds: "Round 1 length",
+  round_decrement_seconds: "The drop per round",
+  rounds: "Rounds",
+};
+
+/** Fields measured in seconds, so their limits read "at least 1s" rather than "at least 1". */
+const SECONDS_FIELDS = new Set(["round_seconds", "round_decrement_seconds"]);
+
+interface ValidationIssue {
+  type?: string;
+  loc?: (string | number)[];
+  ctx?: Record<string, unknown>;
+}
+
+/** One FastAPI/pydantic validation issue, as a sentence a player can act on. */
+function describeIssue({ type, loc = [], ctx = {} }: ValidationIssue): string {
+  const field = String(loc[loc.length - 1] ?? "");
+  const label = FIELD_LABELS[field] ?? "That value";
+  const unit = SECONDS_FIELDS.has(field) ? "s" : "";
+  switch (type) {
+    case "greater_than_equal":
+      return `${label} has to be at least ${ctx.ge}${unit}.`;
+    case "greater_than":
+      return `${label} has to be more than ${ctx.gt}${unit}.`;
+    case "less_than_equal":
+      return `${label} can be at most ${ctx.le}${unit}.`;
+    case "less_than":
+      return `${label} has to be less than ${ctx.lt}${unit}.`;
+    case "string_too_short":
+      return ctx.min_length === 1
+        ? `${label} can't be empty.`
+        : `${label} needs at least ${ctx.min_length} characters.`;
+    case "string_too_long":
+      return `${label} can be at most ${ctx.max_length} characters.`;
+    case "missing":
+      return `${label} is missing.`;
+    case "int_parsing":
+    case "int_type":
+    case "int_from_float":
+      return `${label} has to be a whole number.`;
+    default:
+      return `${label} isn't valid.`;
+  }
+}
+
+/** Turn whatever an error response carried into something fit to show a player. */
+function friendlyMessage(status: number, detail: unknown): string {
+  // The server's own refusals are already written for players.
+  if (typeof detail === "string" && detail && status < 500) return detail;
+  // Request validation (422) arrives as a list of issues; one sentence each.
+  if (Array.isArray(detail) && detail.length) {
+    return [...new Set(detail.map((d) => describeIssue(d as ValidationIssue)))].join(" ");
+  }
+  if (status === 404) return "We couldn't find that. It may have expired.";
+  if (status === 429) return "Slow down a little and try again.";
+  if (status >= 500) return "The game server hit a snag. Try again in a moment.";
+  return "Something went wrong. Try again.";
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, init);
+  } catch {
+    // fetch only throws when the request never got an answer.
+    throw new ApiError(0, "Can't reach the game server. Check your connection and try again.");
+  }
   if (!res.ok) {
-    let detail: unknown = res.statusText;
+    let detail: unknown = null;
     try {
-      detail = (await res.json())?.detail ?? res.statusText;
+      detail = (await res.json())?.detail ?? null;
     } catch {
-      /* non-JSON error body; keep the status text */
+      /* non-JSON error body (a proxy page, a crash); fall back on the status */
     }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new ApiError(res.status, friendlyMessage(res.status, detail));
   }
   return (await res.json()) as T;
 }
