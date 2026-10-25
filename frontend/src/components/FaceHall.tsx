@@ -12,6 +12,7 @@ const COPY = {
     heading: "Hall of faces",
     pill: "the round's most accurate faces",
     empty: "nobody made the face. the wall stays empty. the camera is filing a complaint.",
+    unit: "round",
     // What each spot on the podium is called. Index 0 is the most accurate face.
     awards: [
       { title: "FACE OF THE ROUND", quip: "the camera fell in love" },
@@ -23,8 +24,22 @@ const COPY = {
     heading: "Hall of fame",
     pill: "the most accurate faces of the whole game",
     empty: "not one face landed all game. the wall of fame is a wall.",
+    unit: "round",
     awards: [
       { title: "FACE OF THE GAME", quip: "frame it. sell it." },
+      { title: "MUSEUM QUALITY", quip: "the camera kept a copy" },
+      { title: "STILL ICONIC", quip: "bronze, but make it face" },
+    ],
+  },
+  // Same wall, different clock: a blitz has faces where a classic game has rounds, so
+  // it needs its own noun or every caption would read "round 14" of a game with none.
+  blitz: {
+    heading: "Hall of fame",
+    pill: "the most accurate faces of the whole blitz",
+    empty: "not one face landed in the whole blitz. the wall of fame is a wall.",
+    unit: "face",
+    awards: [
+      { title: "FACE OF THE BLITZ", quip: "frame it. sell it." },
       { title: "MUSEUM QUALITY", quip: "the camera kept a copy" },
       { title: "STILL ICONIC", quip: "bronze, but make it face" },
     ],
@@ -67,7 +82,7 @@ function Photo({ submissionId, rank, name }: { submissionId: string; rank: numbe
   );
 }
 
-/** A highlight, and which round it was pulled in. */
+/** A highlight, and which round -- or, in a blitz, which face -- it was pulled in. */
 type Entry = Highlight & { round: number };
 
 /**
@@ -89,17 +104,26 @@ function bestFaces(rounds: Round[], count = 3): Entry[] {
  */
 export function FaceHall({
   scope,
-  rounds,
+  rounds = [],
+  highlights: ranked,
   players,
   myId,
 }: {
   scope: keyof typeof COPY;
-  rounds: Round[];
+  /** Classic: the rounds to mine. Each one's `highlights` is already its own top three. */
+  rounds?: Round[];
+  /**
+   * Blitz: the server's ranking, used as-is. A blitz has no rounds to flatten, and its
+   * highlights are picked across whole runs rather than per round, so the work is done
+   * before it gets here.
+   */
+  highlights?: Highlight[];
   players: Record<string, Player>;
   myId: string | undefined;
 }) {
   const copy = COPY[scope];
-  const highlights = bestFaces(rounds);
+  const highlights: Entry[] =
+    ranked?.map((h) => ({ ...h, round: h.face_no ?? 0 })) ?? bestFaces(rounds);
   const headingId = `facehall-${scope}`;
 
   return (
@@ -130,7 +154,7 @@ export function FaceHall({
                     background: player ? lookFor(player).color : "var(--white)",
                   } as CSSProperties
                 }
-                aria-label={`#${i + 1} ${name}: ${h.accuracy_points}% ${h.label}, round ${h.round}`}
+                aria-label={`#${i + 1} ${name}: ${h.accuracy_points}% ${h.label}, ${copy.unit} ${h.round}`}
               >
                 {i === 0 && <Crown className="facecard__crown" />}
                 <span className="facecard__rank" aria-hidden="true">
@@ -150,9 +174,11 @@ export function FaceHall({
                     {h.player_id === myId ? " (you)" : ""}
                   </span>
                   <span className="facecard__quip">
-                    {scope === "game" ? `${h.label} · round ${h.round}` : `${h.label} · ${award.quip}`}
+                    {scope === "round"
+                      ? `${h.label} · ${award.quip}`
+                      : `${h.label} · ${copy.unit} ${h.round}`}
                   </span>
-                  {scope === "game" && <span className="facecard__quip">{award.quip}</span>}
+                  {scope !== "round" && <span className="facecard__quip">{award.quip}</span>}
                 </div>
               </li>
             );

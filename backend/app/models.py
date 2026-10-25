@@ -111,6 +111,10 @@ class Highlight(BaseModel):
     # Copied from the player's RoundScore, so the gallery needs nothing else to rank by.
     accuracy_points: int
     place: int
+    # Blitz only: which face this was. A classic highlight sits inside the Round it came
+    # from, so the client reads the number off that; a blitz one is loose on BlitzState
+    # and has to carry its own.
+    face_no: int | None = None
 
 
 class Round(BaseModel):
@@ -157,6 +161,10 @@ class BlitzFace(BaseModel):
     points: int = 0
     # The passing read's confidence; None when the face was skipped or ran out.
     confidence: float | None = None
+    # The frame that passed it, served at /api/media/{id} until the media TTL reaps it.
+    # None unless passed. Under PROCESSOR=presage the fast path borrows the player's
+    # newest upload for this id, so a reading pass has a photo too -- see api/presage.py.
+    submission_id: str | None = None
     # How long this player spent on it.
     seconds: float = 0.0
 
@@ -207,6 +215,9 @@ class BlitzState(BaseModel):
 
     sequence_length: int
     runs: dict[str, BlitzRun] = Field(default_factory=dict)
+    # The whole blitz's best faces, filled in once at game over. Blitz has no rounds to
+    # hang them off, so they live here; `Round.highlights` is the classic equivalent.
+    highlights: list[Highlight] = Field(default_factory=list)
 
 
 class GameConfig(BaseModel):

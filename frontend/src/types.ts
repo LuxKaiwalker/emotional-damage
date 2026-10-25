@@ -77,6 +77,11 @@ export interface Highlight {
   label: string;
   accuracy_points: number;
   place: number;
+  /**
+   * Blitz only: which face this was. A classic highlight sits inside the Round it came
+   * from, so its number is read off that; a blitz one is loose on `BlitzState`.
+   */
+  face_no?: number | null;
 }
 
 export interface Round {
@@ -118,6 +123,8 @@ export interface BlitzFace {
   points: number;
   /** The passing read's confidence; null when skipped or run out. */
   confidence: number | null;
+  /** The frame that passed it; see `mediaUrl`. Null unless passed. */
+  submission_id?: string | null;
   seconds: number;
 }
 
@@ -167,6 +174,11 @@ export interface BlitzRun {
 export interface BlitzState {
   sequence_length: number;
   runs: Record<string, BlitzRun>;
+  /**
+   * The whole blitz's best faces, filled in once at game over. Already ranked by the
+   * server; blitz has no rounds to hang them off, which is why they live here.
+   */
+  highlights: Highlight[];
 }
 
 export interface GameConfig {

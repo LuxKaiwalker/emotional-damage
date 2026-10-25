@@ -118,8 +118,17 @@ export function Winner() {
           ))}
         </ol>
 
-        {/* Built from round highlights, and a blitz has no rounds: it would always read empty. */}
-        {!isBlitz && (
+        {/* Both modes get a wall; where the three faces come from is what differs. Classic
+            mines each round's own top three, blitz takes the server's ranking across
+            whole runs -- it has no rounds to mine. */}
+        {isBlitz ? (
+          <FaceHall
+            scope="blitz"
+            highlights={state?.blitz?.highlights ?? []}
+            players={state?.players ?? {}}
+            myId={session?.player_id}
+          />
+        ) : (
           <FaceHall
             scope="game"
             rounds={state?.history ?? []}

@@ -157,6 +157,37 @@ def score_round(rnd: Round) -> dict[str, RoundScore]:
     return scores
 
 
+def pick_blitz_highlights(done: dict[str, list[BlitzFace]]) -> list[Highlight]:
+    """A whole blitz's best faces: most accurate first, an earlier face breaking a tie.
+
+    The blitz twin of `pick_highlights`, and the same shape comes out, so the gallery
+    does not have to know which mode it is showing. It ranks across every player's whole
+    run rather than one round, because a blitz has no rounds to take a top three from --
+    the game's three best faces are simply its three best.
+
+    Only passed faces qualify, and only ones that kept a frame: a skipped or lapsed face
+    has no read to rank, and there is nothing to pin up without a photo.
+    """
+    faces = [
+        (player_id, face)
+        for player_id, run in done.items()
+        for face in run
+        if face.outcome == "passed" and face.submission_id and face.confidence is not None
+    ]
+    faces.sort(key=lambda item: (-round(ACCURACY_POINTS * item[1].confidence), item[1].index))
+    return [
+        Highlight(
+            player_id=player_id,
+            submission_id=face.submission_id,
+            label=face.target,
+            accuracy_points=round(ACCURACY_POINTS * face.confidence),
+            place=place,
+            face_no=face.index + 1,
+        )
+        for place, (player_id, face) in enumerate(faces[:HIGHLIGHT_COUNT], start=1)
+    ]
+
+
 def pick_highlights(rnd: Round, scores: dict[str, RoundScore]) -> list[Highlight]:
     """The round's best faces: most accurate first, an earlier pass breaking a tie.
 
@@ -834,7 +865,9 @@ class GameEngine:
             player.points += points
             player.rounds_correct += 1
             face_no = run.face_no
-            self._advance(room, run, utcnow(), "passed", points, result.confidence)
+            self._advance(
+                room, run, utcnow(), "passed", points, result.confidence, submission.id
+            )
             event = EventMessage(kind="blitz_face_passed", payload={
                 "player_id": player.id,
                 "face_no": face_no,
@@ -959,6 +992,7 @@ class GameEngine:
         outcome: Literal["passed", "skipped", "expired"],
         points: int = 0,
         confidence: float | None = None,
+        submission_id: str | None = None,
     ) -> None:
         """Close this player's face and open their next one.
 
@@ -973,6 +1007,7 @@ class GameEngine:
             outcome=outcome,
             points=points,
             confidence=confidence,
+            submission_id=submission_id,
             seconds=max(0.0, (now - run.face_started_at).total_seconds()),
         ))
         if outcome == "passed":
@@ -1252,6 +1287,7 @@ class GameEngine:
             if room.state.blitz is not None:
                 for player_id, run in room.state.blitz.runs.items():
                     run.faces = room.blitz_done.get(player_id, [])
+                room.state.blitz.highlights = pick_blitz_highlights(room.blitz_done)
             # A crashed game's scores are whatever it got to, not a result: not recorded.
             if self.highscores is not None and reason != "crashed":
                 finals = [

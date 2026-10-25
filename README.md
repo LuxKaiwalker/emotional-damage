@@ -146,6 +146,18 @@ Two deadlines, and the game's always wins:
 Both are absolute timestamps, anchored the same way client-side, so a long round and a long
 game count down off the same measured clock offset.
 
+### Hall of fame
+
+Both modes end on the game's three most accurate faces, pinned up as polaroids. Where
+they come from differs: classic picks a top three per round in `_end_round`
+(`pick_highlights`, onto `Round.highlights`) and the winner screen takes the best of
+those, while a blitz has no rounds to pick from, so `pick_blitz_highlights` ranks across
+every player's whole run once, at game over, onto `BlitzState.highlights`.
+
+Only a passed face with a kept frame qualifies -- there is nothing to rank or to pin up
+otherwise. Under `PROCESSOR=presage` a pass arrives from a reading with no upload of its
+own, so the fast path borrows the player's newest frame for it; see `api/presage.py`.
+
 ### High scores: one number, one kind of game
 
 `GET /api/highscores/{client_id}` is what the landing page badge reads, and it means **the

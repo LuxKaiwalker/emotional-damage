@@ -1,5 +1,8 @@
 """Blitz end to end: the shared sequence, asynchronous cursors, and points per face."""
 
+import json
+
+from app.game.prompts import PROMPTS
 from tests.conftest import (
     TINY_JPEG,
     blitz_client,
@@ -141,12 +144,20 @@ def test_the_sequence_never_reaches_the_client(tmp_path):
     with blitz_client(tmp_path, processor="test-hit") as client:
         host = create_room(client)
         state = start_blitz(client, host["room_id"], host)
-        assert set(state["blitz"]) == {"sequence_length", "runs"}
+        # Named exactly, so adding a field to BlitzState is a decision rather than a
+        # drift: the one thing that must never appear here is the sequence itself.
+        assert set(state["blitz"]) == {"sequence_length", "runs", "highlights"}
+        # The real check, rather than a substring hunt (`sequence_length` would match
+        # one): the only prompts on the wire are the ones players are looking at now.
+        on_the_wire = {p.text for p in PROMPTS if p.text in json.dumps(state)}
+        current = {r["prompt"] for r in state["blitz"]["runs"].values()}
+        assert on_the_wire == current, "a prompt nobody is on leaked into the snapshot"
         assert state["blitz"]["sequence_length"] >= 60
         run = run_of(state, host)
         assert "next_prompt" not in run and "next_target" not in run
-        # The per-face breakdown is published once, at game over -- not all game.
+        # The per-face breakdown and the hall of fame are published once, at game over.
         assert run["faces"] == []
+        assert state["blitz"]["highlights"] == []
 
 
 def test_a_mid_blitz_joiner_gets_a_run_at_the_first_face(tmp_path):
