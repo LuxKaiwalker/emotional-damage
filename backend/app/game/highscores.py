@@ -16,7 +16,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
-from app.models import HighScore, utcnow
+from app.models import GameMode, HighScore, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -44,13 +44,27 @@ class HighScoreStore:
     def get(self, client_id: str) -> HighScore | None:
         return self._scores.get(client_id)
 
-    async def record(self, finals: list[tuple[str, str, int]]) -> None:
+    @staticmethod
+    def key(client_id: str, mode: GameMode = GameMode.CLASSIC) -> str:
+        """Where one browser's best for one mode is filed.
+
+        Namespaced by mode because the two do not score on the same scale: a blitz total
+        is a few thousand points where a classic game caps at 2000, so a single key would
+        let one blitz permanently bury a browser's real classic best. Classic keeps the
+        bare `client_id`, so every score recorded before this existed still counts.
+        """
+        return client_id if mode is GameMode.CLASSIC else f"{client_id}:{mode.value}"
+
+    async def record(
+        self, finals: list[tuple[str, str, int]], mode: GameMode = GameMode.CLASSIC
+    ) -> None:
         """Count one finished game for each `(client_id, name, points)`, keeping the best."""
         if not finals:
             return
         async with self._lock:
             now = utcnow()
-            for client_id, name, points in finals:
+            for raw_id, name, points in finals:
+                client_id = self.key(raw_id, mode)
                 prev = self._scores.get(client_id)
                 if prev is None:
                     self._scores[client_id] = HighScore(

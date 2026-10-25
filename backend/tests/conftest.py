@@ -97,7 +97,21 @@ class MarkedProcessor:
         return ProcessResult(score=0.0, label="not-a-real-label", confidence=1.0, meta={})
 
 
+class WeakHitProcessor:
+    """Right label, low confidence: the only way to assert on a pass threshold.
+
+    `test-hit` answers with confidence 1.0, so it passes any threshold; this one passes
+    label-only rules and fails anything above 0.2.
+    """
+
+    name = "test-weak"
+
+    async def process(self, frame: bytes, ctx: RoundCtx) -> ProcessResult:
+        return ProcessResult(score=1.0, label=ctx.target, confidence=0.2, meta={})
+
+
 registry.register(HitProcessor)
+registry.register(WeakHitProcessor)
 registry.register(MarkedProcessor)
 registry.register(MissProcessor)
 registry.register(SlowProcessor)
@@ -232,3 +246,61 @@ def play_one_round(
         and len(s["round"]["submissions"]) == len(submitters)
         and all(x["status"] == "done" for x in s["round"]["submissions"].values()),
     )
+
+
+# --- blitz -----------------------------------------------------------------
+
+
+def blitz_client(tmp_path: Path, **overrides) -> TestClient:
+    """A client playing blitz. Short clocks, so a test does not wait out a real game."""
+    base = dict(
+        game_mode="blitz",
+        blitz_seconds=30,
+        blitz_face_seconds=5,
+        blitz_pass_confidence=0.0,
+        blitz_skip_cooldown_seconds=2,
+        blitz_sequence_min_length=60,
+    )
+    return make_client(tmp_path, **{**base, **overrides})
+
+
+def start_blitz(client: TestClient, room_id: str, host: dict) -> dict:
+    res = client.post(f"/api/rooms/{room_id}/start", params={"player_id": host["player_id"]})
+    assert res.status_code == 202, res.text
+    return wait_for(client, room_id, lambda s: s["phase"] == "round" and s["blitz"] is not None)
+
+
+def run_of(state: dict, player: dict) -> dict:
+    return state["blitz"]["runs"][player["player_id"]]
+
+
+def send_frame(client: TestClient, room_id: str, player: dict, jpeg: bytes):
+    return client.post(
+        f"/api/rooms/{room_id}/frames",
+        data={"player_id": player["player_id"]},
+        files=frame_files(jpeg),
+    )
+
+
+def skip_face(client: TestClient, room_id: str, player: dict):
+    return client.post(f"/api/rooms/{room_id}/skip", params={"player_id": player["player_id"]})
+
+
+def push_faces(
+    client: TestClient, room_id: str, player: dict, jpeg: bytes, count: int
+) -> dict:
+    """Upload frames for one player until their run has passed `count` faces.
+
+    The blitz analogue of `play_one_round`: progress is per player and asynchronous, so
+    the wait is on that player's own run rather than on a room-wide round.
+    """
+    for _ in range(count):
+        before = run_of(state_of(client, room_id), player)["passed"]
+        res = send_frame(client, room_id, player, jpeg)
+        assert res.status_code in (200, 202), res.text
+        wait_for(
+            client,
+            room_id,
+            lambda s, b=before: run_of(s, player)["passed"] > b,
+        )
+    return state_of(client, room_id)

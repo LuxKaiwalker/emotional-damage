@@ -5,7 +5,16 @@ import { useGameSocket } from "./hooks/useGameSocket";
 import { lookFor, type Look } from "./avatar";
 import { phasePath } from "./routes";
 import { loadSessionFor, type StoredSession } from "./session";
-import type { GameState, Phase, Player, Round, RoundScore, Submission } from "./types";
+import type {
+  BlitzRun,
+  GameMode,
+  GameState,
+  Phase,
+  Player,
+  Round,
+  RoundScore,
+  Submission,
+} from "./types";
 
 /**
  * The single bridge between the screens and the server.
@@ -43,10 +52,20 @@ export interface Game {
   roster: { player: Player; look: Look; isHost: boolean; isMe: boolean }[];
   /** Roster ranked by points, for the leaderboard and winner screens. */
   standings: Standing[];
-  /** This player's submission in the current round, if any has been scored. */
+  /** This player's submission in the current round, if any has been scored. Classic. */
   mySubmission: Submission | undefined;
-  /** Whether I have passed this round: the server takes no more frames from me. */
+  /**
+   * Whether I have passed this round: the server takes no more frames from me. Classic
+   * only -- in blitz a pass moves you to the next face, so frames are always wanted.
+   */
   iPassed: boolean;
+
+  /** Which rules this room plays by. "classic" until the first snapshot arrives. */
+  mode: GameMode;
+  /** This player's own cursor into the shared sequence. Blitz only. */
+  myRun: BlitzRun | undefined;
+  /** Whether rivals' running totals should be shown mid-blitz. See `GameConfig`. */
+  showLiveBoard: boolean;
 }
 
 export function useGame(): Game {
@@ -73,6 +92,10 @@ export function useGame(): Game {
       }));
   }, [state, session?.player_id]);
 
+  // No mode branch needed: this already ranks on points, then rounds_correct, then join
+  // time, which is exactly blitz's rule too (volume decides, and accuracy is already
+  // inside the points). `delta` and `score` are simply empty in blitz, which has no
+  // round boundary to award at.
   const standings = useMemo(() => {
     if (!state) return [];
     const awarded = state.round?.points_awarded ?? {};
@@ -99,6 +122,9 @@ export function useGame(): Game {
     session && state?.round ? state.round.submissions[session.player_id] : undefined;
   const iPassed = !!(session && state?.round?.passed[session.player_id]);
 
+  const mode = state?.config.mode ?? "classic";
+  const myRun = session && state?.blitz ? state.blitz.runs[session.player_id] : undefined;
+
   return {
     code,
     session,
@@ -113,6 +139,9 @@ export function useGame(): Game {
     standings,
     mySubmission,
     iPassed,
+    mode,
+    myRun,
+    showLiveBoard: mode !== "blitz" || !!state?.config.blitz_live_leaderboard,
   };
 }
 
@@ -135,7 +164,8 @@ export function useFollowServerPhase(game: Game): void {
       return;
     }
     if (!state) return;
-    const target = phasePath(state.phase, code);
+    // The mode splits the one `round` phase across two screens; see routes.ts.
+    const target = phasePath(state.phase, code, state.config.mode);
     if (pathname !== target) navigate(target, { replace: true, viewTransition: true });
   }, [state?.phase, state, session, code, pathname, navigate]);
 }

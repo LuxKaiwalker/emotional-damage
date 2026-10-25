@@ -18,6 +18,17 @@ class Phase(str, Enum):
     GAME_OVER = "game_over"
 
 
+class GameMode(str, Enum):
+    """Which rules a room plays by. A GameConfig field, so it survives a restart."""
+
+    # Shared rounds: everyone is asked for the same face at the same time, scored on
+    # speed and placement against each other.
+    CLASSIC = "classic"
+    # One clock, no rounds: every player runs asynchronously through a shared sequence
+    # of faces and is paid per face passed. See app/game/engine.py, `_run_blitz`.
+    BLITZ = "blitz"
+
+
 class SubmissionStatus(str, Enum):
     PENDING = "pending"
     DONE = "done"
@@ -41,6 +52,9 @@ class ProcessResult(BaseModel):
 class Submission(BaseModel):
     id: str
     player_id: str
+    # The round number in classic; the submitting player's own `face_no` in blitz, where
+    # there are no rounds and every player is at a different point in the sequence. Either
+    # way it is what `apply_result` checks to drop a result whose face has moved on.
     round_no: int
     received_at: datetime
     status: SubmissionStatus = SubmissionStatus.PENDING
@@ -56,6 +70,7 @@ class Player(BaseModel):
     connected: bool = False
     # Sum of every round's RoundScore.points: up to 200 per round, rounded to whole points.
     points: int = 0
+    # Rounds passed in classic; faces passed in blitz.
     rounds_correct: int = 0
     joined_at: datetime = Field(default_factory=utcnow)
     # The browser's long-lived id, so this game's final score can count toward its high
@@ -126,6 +141,72 @@ class Round(BaseModel):
     audio_id: str | None = None
 
 
+class BlitzFace(BaseModel):
+    """One finished face in one player's run, for the end-of-game breakdown.
+
+    Kept server-side on `store.Room.blitz_done` while the blitz runs and copied onto
+    `BlitzRun.faces` once, in `_finish_game`: thirty faces times twelve players is a lot
+    of JSON to put in every snapshot when a blitz publishes several times a second.
+    """
+
+    index: int
+    prompt: str
+    target: str
+    outcome: Literal["passed", "skipped", "expired"]
+    # 0 unless passed. See `engine.score_face`.
+    points: int = 0
+    # The passing read's confidence; None when the face was skipped or ran out.
+    confidence: float | None = None
+    # How long this player spent on it.
+    seconds: float = 0.0
+
+
+class BlitzRun(BaseModel):
+    """One player's cursor into the room's shared sequence: blitz's answer to `Round`.
+
+    Every player has their own, and they diverge -- that asynchrony is the mode. What
+    keeps it fair is that `cursor` indexes one sequence shared by the whole room, so a
+    given face number asks everyone for the same thing.
+    """
+
+    player_id: str
+    # 0-based index into the room's sequence, and the 1-based face number shown to the
+    # player. `face_no` is what this player's Submissions carry as `round_no`.
+    cursor: int = 0
+    face_no: int = 1
+    prompt: str
+    target: str
+    face_started_at: datetime
+    # Clamped to `game_ends_at`, so no per-face deadline outlives the game clock.
+    face_ends_at: datetime
+    # Newest frame's read, for the UI. What `round.submissions[player_id]` is in classic.
+    submission: Submission | None = None
+    passed: int = 0
+    skipped: int = 0
+    expired: int = 0
+    # How the face just before this one ended, so the UI can react to it.
+    last_outcome: Literal["passed", "skipped", "expired"] | None = None
+    last_points: int = 0
+    last_confidence: float | None = None
+    # When this player may skip again. None means right now. The client anchors a
+    # countdown to it exactly like every other deadline.
+    skip_ready_at: datetime | None = None
+    # Empty until the game is over; see BlitzFace.
+    faces: list[BlitzFace] = Field(default_factory=list)
+
+
+class BlitzState(BaseModel):
+    """The live working set of a blitz, the way `round` is for classic.
+
+    Note what is NOT here: the sequence itself. It lives on `store.Room`, server-side,
+    both because it is bulky and because a client holding it could read ahead and
+    pre-make the next face -- which would defeat the shared sequence's whole purpose.
+    """
+
+    sequence_length: int
+    runs: dict[str, BlitzRun] = Field(default_factory=dict)
+
+
 class GameConfig(BaseModel):
     """Echoed to clients so the UI never hardcodes timings."""
 
@@ -139,6 +220,22 @@ class GameConfig(BaseModel):
     max_points_per_round: int
     capture_interval_ms: int
     max_players: int
+
+    # --- mode ------------------------------------------------------------
+    # Which rules this room plays by. Host-set in the lobby; survives a restart, because
+    # `restart_game` deliberately never touches `config`.
+    mode: GameMode = GameMode.CLASSIC
+    # Blitz only. `game_seconds` is ignored in blitz: `blitz_seconds` is the clock.
+    blitz_seconds: int = 150
+    blitz_face_seconds: int = 12
+    blitz_pass_confidence: float = 0.0
+    # A UI preference, not a privacy control: every snapshot carries every Player.points
+    # whatever this says, because there is no per-recipient serializer. See game/hub.py.
+    blitz_live_leaderboard: bool = True
+    # Echoed so the UI can show the cooldown; not host-settable.
+    blitz_skip_cooldown_seconds: int = 5
+    # 100 flat plus up to 100 for accuracy. Fixed by the rules, echoed for the UI.
+    max_points_per_face: int = 200
 
     def round_length(self, round_no: int) -> int:
         """Scheduled seconds for round `round_no` (1-based), before the game timer clamps it."""
@@ -155,6 +252,9 @@ class GameState(BaseModel):
     # holds the latest, so this is what the end-of-game deep scan reads its prompts from.
     history: list[Round] = Field(default_factory=list)
     players: dict[str, Player] = Field(default_factory=dict)
+    # The live blitz, when `config.mode` is blitz. `round` stays None for the whole game
+    # in that mode, and this stays None in classic: exactly one of the two is ever set.
+    blitz: BlitzState | None = None
     config: GameConfig
     # Which game this is in the room's life. Bumped by every restart, so a client can tell
     # "scores reset" from "scores lost".
@@ -226,6 +326,32 @@ class RoundTimingRequest(BaseModel):
 
     round_seconds: int = Field(ge=1, le=600)
     round_decrement_seconds: int = Field(ge=0, le=600)
+
+
+class BlitzConfigRequest(BaseModel):
+    """Host's blitz settings. Field bounds are sanity caps; the engine checks the pair.
+
+    No skip allowance here on purpose: a free skip on a cooldown is a rule of the mode,
+    not a dial, so the cooldown stays an operator setting.
+    """
+
+    blitz_seconds: int = Field(ge=30, le=600)
+    blitz_face_seconds: int = Field(ge=2, le=60)
+    # Capped below 1.0: `judge` reports the top expression's confidence and
+    # `presage.STAND_INS` maps `disappointed` onto `sad`, so a near-perfect bar would
+    # make some targets unpassable. See app/config.py.
+    blitz_pass_confidence: float = Field(ge=0.0, le=0.95)
+    blitz_live_leaderboard: bool
+
+
+class BlitzSkipResponse(BaseModel):
+    """What the skipping player gets back: the face they just moved on to."""
+
+    status: Literal["skipped"] = "skipped"
+    face_no: int
+    prompt: str
+    target: str
+    skip_ready_at: datetime
 
 
 class VitalsReport(BaseModel):

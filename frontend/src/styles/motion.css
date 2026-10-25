@@ -119,6 +119,7 @@
 .placings > *,
 .row-wrap > *,
 .how__steps > *,
+.blitz__board > *,
 .scan-rounds > * {
   animation: slap var(--dur-enter) var(--ease-spring) backwards;
   animation-delay: calc(var(--base, 0ms) + var(--i, 0) * var(--step, 70ms));
@@ -126,35 +127,36 @@
 
 /* --i is the position among siblings; --base and --step are set per list. */
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(1) { --i: 0; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(1) { --i: 0; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(2) { --i: 1; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(2) { --i: 1; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(3) { --i: 2; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(3) { --i: 2; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(4) { --i: 3; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(4) { --i: 3; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(5) { --i: 4; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(5) { --i: 4; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(6) { --i: 5; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(6) { --i: 5; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(7) { --i: 6; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(7) { --i: 6; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(8) { --i: 7; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(8) { --i: 7; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(9) { --i: 8; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(9) { --i: 8; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(10) { --i: 9; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(10) { --i: 9; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(11) { --i: 10; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(11) { --i: 10; }
 :is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
-    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds) > :nth-child(n+12) { --i: 11; }
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(n+12) { --i: 11; }
 
 /* Each screen's timeline: the header lands first, then the content. */
 .join__main { --base: 70ms; }
 .lobby__left { --base: 70ms; }
 .lobby__cols { --base: 70ms; }
 .round__main { --base: 140ms; }
+.blitz__board { --base: 180ms; --step: 50ms; }
 .how__steps, .scan-rounds { --base: 120ms; --step: 60ms; }
 
 /* ---------- Home: the one big moment ---------- */
@@ -212,6 +214,9 @@
 .rounds-pick__opt, .seg button { transition: scale var(--dur-fast) var(--ease-snappy); }
 .rounds-pick__opt:active, .seg button:active:not(:disabled) { scale: .88; transition-duration: 60ms; }
 :is(.rounds-pick__opt, .seg button)[aria-pressed="true"] { animation: pop 380ms var(--ease-wobbly); }
+/* a blitz pays out several times a round, so the totals that move say so */
+.blitz__count { display: inline-block; animation: bump 380ms var(--ease-spring); }
+
 /* a host's change lands on every screen at once, so the value itself bumps */
 .rules__vibe { animation: bump 380ms var(--ease-spring); }
 

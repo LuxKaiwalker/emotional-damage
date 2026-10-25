@@ -27,18 +27,23 @@ The rules this file implements:
 
 import asyncio
 import logging
-from datetime import timedelta
-from typing import NamedTuple
+import math
+from datetime import datetime, timedelta
+from typing import Literal, NamedTuple
 
 from app.config import Settings
 from app.game.highscores import HighScoreStore
 from app.game.hub import ConnectionManager
-from app.game.prompts import Prompt, pick_prompt
+from app.game.prompts import Prompt, build_sequence, pick_prompt
 from app.game.store import CodeExhausted, InMemoryRoomStore, Room, new_id
 from app.game.voice import VoiceStudio
 from app.models import (
+    BlitzFace,
+    BlitzRun,
+    BlitzState,
     EventMessage,
     GameConfig,
+    GameMode,
     GameState,
     Highlight,
     Phase,
@@ -73,6 +78,11 @@ HIGHLIGHT_COUNT = 3
 # before the round ends, so the last round would be unwinnable.
 SHORTEST_PLAYABLE_ROUND_SECONDS = 3
 
+# Blitz: flat points for passing a face, plus ACCURACY_POINTS for the read's confidence,
+# so one face is worth 100..200 and the player who makes more faces wins. There is no
+# placement term: with everyone on their own cursor, "who was first" compares nothing.
+BLITZ_BASE_POINTS = 100
+
 
 class AcceptedFrame(NamedTuple):
     """A registered submission, plus the round context the frame has to be processed with.
@@ -106,6 +116,17 @@ class AlreadyPassed(GameError):
 
     def __init__(self) -> None:
         super().__init__("already passed this round", status_code=409)
+
+
+def score_face(confidence: float) -> int:
+    """What one passed blitz face pays. Pure, so the rule can be tested on its own.
+
+    Flat base plus accuracy, and nothing else: volume is meant to be the axis that
+    decides a blitz, so a player who makes more faces out-scores a slower, more precise
+    one. Deliberately not a function of how fast the face was made -- the global clock
+    already pays for speed, by letting a quick player fit more faces into it.
+    """
+    return BLITZ_BASE_POINTS + round(ACCURACY_POINTS * min(1.0, max(0.0, confidence)))
 
 
 def score_round(rnd: Round) -> dict[str, RoundScore]:
@@ -220,6 +241,13 @@ class GameEngine:
                 max_points_per_round=SPEED_POINTS + ACCURACY_POINTS,
                 capture_interval_ms=self.settings.capture_interval_ms,
                 max_players=self.settings.max_players_per_room,
+                mode=GameMode(self.settings.game_mode),
+                blitz_seconds=self.settings.blitz_seconds,
+                blitz_face_seconds=self.settings.blitz_face_seconds,
+                blitz_pass_confidence=self.settings.blitz_pass_confidence,
+                blitz_live_leaderboard=self.settings.blitz_live_leaderboard,
+                blitz_skip_cooldown_seconds=self.settings.blitz_skip_cooldown_seconds,
+                max_points_per_face=BLITZ_BASE_POINTS + ACCURACY_POINTS,
             ),
         )
         room = self.store.create(state)
@@ -256,6 +284,9 @@ class GameEngine:
             if state.round is not None:
                 state.round.submissions.pop(player_id, None)
                 state.round.passed.pop(player_id, None)
+            if state.blitz is not None:
+                state.blitz.runs.pop(player_id, None)
+            room.blitz_done.pop(player_id, None)
 
             if not state.players:
                 await self._destroy(room, reason="empty")
@@ -363,14 +394,21 @@ class GameEngine:
                 raise GameError("The game is already running.", status_code=409)
 
             now = utcnow()
+            config = state.config
+            blitz = config.mode is GameMode.BLITZ
+            # In blitz the mode's own clock *is* the game clock; `game_seconds` is sized
+            # for a round schedule and means nothing here.
+            seconds = config.blitz_seconds if blitz else config.game_seconds
             state.game_started_at = now
-            state.game_ends_at = now + timedelta(seconds=state.config.game_seconds)
+            state.game_ends_at = now + timedelta(seconds=seconds)
             await self._publish(room, EventMessage(kind="game_started", payload={
                 "game_no": state.game_no,
+                "mode": config.mode.value,
                 "ends_at": state.game_ends_at.isoformat(),
             }))
 
-        room.task = asyncio.create_task(self._run_game(room), name=f"game:{room_id}")
+        runner = self._run_blitz if blitz else self._run_game
+        room.task = asyncio.create_task(runner(room), name=f"game:{room_id}")
 
     async def set_rounds(self, room_id: str, player_id: str, rounds: int) -> None:
         """Host picks the game length in the lobby. It sticks across restarts.
@@ -423,6 +461,9 @@ class GameEngine:
                 player.last_frame_at = None
             state.round = None
             state.history = []
+            state.blitz = None
+            room.blitz_sequence.clear()
+            room.blitz_done.clear()
             room.inflight.clear()
             state.phase = Phase.LOBBY
             state.game_no += 1
@@ -458,6 +499,109 @@ class GameEngine:
                 "round_seconds": round_seconds,
                 "round_decrement_seconds": round_decrement_seconds,
                 "game_seconds": state.config.game_seconds,
+            }))
+            return state.config
+
+    # --- blitz actions ---------------------------------------------------
+
+    async def skip_face(self, room_id: str, player_id: str) -> BlitzRun:
+        """Move this player past a face they cannot land. Costs no points, has a cooldown.
+
+        The cooldown is the whole design: a free skip is what stops a face that simply
+        will not register from eating a player's clock, and the cooldown is what stops
+        skipping being a faster way to play than making faces.
+        """
+        room = self.require_room(room_id)
+        async with room.lock:
+            state = room.state
+            if player_id not in state.players:
+                raise GameError("You're not in this lobby anymore. Rejoin with the code.", 404)
+            if state.config.mode is not GameMode.BLITZ:
+                raise GameError("Skipping is a blitz thing. This game plays in rounds.", 409)
+            if state.phase is not Phase.ROUND or state.blitz is None:
+                raise GameError("There's no face to skip right now.", 409)
+            run = self._active_run(room, player_id)
+            if run is None:
+                raise GameError("The blitz is over.", 409)
+
+            now = utcnow()
+            if run.skip_ready_at is not None and now < run.skip_ready_at:
+                wait = max(1, math.ceil((run.skip_ready_at - now).total_seconds()))
+                raise GameError(f"Skip again in {wait}s.", status_code=429)
+
+            skipped = run.face_no
+            self._advance(room, run, now, "skipped")
+            run.skip_ready_at = now + timedelta(
+                seconds=state.config.blitz_skip_cooldown_seconds
+            )
+            await self._publish(room, EventMessage(kind="blitz_face_skipped", payload={
+                "player_id": player_id, "face_no": skipped,
+            }))
+            return run
+
+    async def set_mode(self, room_id: str, player_id: str, mode: GameMode) -> GameConfig:
+        """Host picks the rules in the lobby. Sticks across restarts, like every setting.
+
+        Both modes' settings stay independently settable whatever the mode is, so a host
+        can switch back and forth without reconfiguring; the lobby just shows the rows
+        belonging to whichever is selected.
+        """
+        room = self.require_room(room_id)
+        async with room.lock:
+            state = room.state
+            if player_id != state.host_id:
+                raise GameError("Only the host can change the mode.", status_code=403)
+            if state.phase is not Phase.LOBBY:
+                raise GameError(_not_in_lobby(state.phase, "change the mode"), 409)
+
+            state.config = state.config.model_copy(update={"mode": mode})
+            await self._publish(room, EventMessage(kind="config_changed", payload={
+                "mode": mode.value,
+            }))
+            return state.config
+
+    async def set_blitz_config(
+        self,
+        room_id: str,
+        player_id: str,
+        *,
+        blitz_seconds: int,
+        blitz_face_seconds: int,
+        blitz_pass_confidence: float,
+        blitz_live_leaderboard: bool,
+    ) -> GameConfig:
+        """Host's blitz settings. Lobby only, so a running blitz never changes under it.
+
+        Deliberately does not go through `_fit_schedule`: that exists to size a game timer
+        to a *round schedule* and to refuse a last round too short to play, and a blitz has
+        neither. Its clock is `blitz_seconds` directly, so the only thing left to check is
+        the one pair pydantic cannot.
+        """
+        room = self.require_room(room_id)
+        async with room.lock:
+            state = room.state
+            if player_id != state.host_id:
+                raise GameError("Only the host can change the blitz settings.", 403)
+            if state.phase is not Phase.LOBBY:
+                raise GameError(_not_in_lobby(state.phase, "change the blitz settings"), 409)
+            if blitz_face_seconds > blitz_seconds:
+                raise GameError(
+                    f"A {blitz_face_seconds}s limit per face does not fit in a"
+                    f" {blitz_seconds}s blitz. Lower the limit or lengthen the blitz.",
+                    status_code=422,
+                )
+
+            state.config = state.config.model_copy(update={
+                "blitz_seconds": blitz_seconds,
+                "blitz_face_seconds": blitz_face_seconds,
+                "blitz_pass_confidence": blitz_pass_confidence,
+                "blitz_live_leaderboard": blitz_live_leaderboard,
+            })
+            await self._publish(room, EventMessage(kind="config_changed", payload={
+                "blitz_seconds": blitz_seconds,
+                "blitz_face_seconds": blitz_face_seconds,
+                "blitz_pass_confidence": blitz_pass_confidence,
+                "blitz_live_leaderboard": blitz_live_leaderboard,
             }))
             return state.config
 
@@ -521,7 +665,13 @@ class GameEngine:
             player = state.players.get(player_id)
             if player is None:
                 raise GameError("You're not in this lobby anymore. Rejoin with the code.", 404)
-            if state.phase is not Phase.ROUND or state.round is None:
+            if state.phase is not Phase.ROUND:
+                raise GameError("No round is running, so there's no face to send yet.", 409)
+
+            if state.config.mode is GameMode.BLITZ:
+                return await self._submit_blitz_frame(room, player)
+
+            if state.round is None:
                 raise GameError("No round is running, so there's no face to send yet.", 409)
             if player_id in state.round.passed:
                 raise AlreadyPassed()
@@ -546,6 +696,36 @@ class GameEngine:
             await self._publish(room)
             return AcceptedFrame(submission, state.round.prompt, state.round.target)
 
+    async def _submit_blitz_frame(self, room: Room, player: Player) -> AcceptedFrame:
+        """Register a frame against whichever face this player is on. Lock held.
+
+        Note what is missing: `AlreadyPassed`. Passing a face advances you to the next one,
+        so in blitz there is never a state where a player's frames stop being wanted --
+        which is also why the client's uploader does not need an `iPassed` gate here.
+        """
+        run = self._active_run(room, player.id)
+        if run is None:
+            raise GameError("The blitz is over.", 409)
+
+        now = utcnow()
+        min_gap = timedelta(milliseconds=self.settings.min_frame_interval_ms)
+        if player.last_frame_at is not None and now - player.last_frame_at < min_gap:
+            raise GameError("rate_limited", status_code=429)
+        player.last_frame_at = now
+
+        submission = Submission(
+            id=new_id("s"),
+            player_id=player.id,
+            # The player's own face number, not a round. `apply_result` compares it back
+            # against the run, so a result for a face they have left is dropped.
+            round_no=run.face_no,
+            received_at=now,
+        )
+        run.submission = submission
+        room.inflight[submission.id] = submission
+        await self._publish(room)
+        return AcceptedFrame(submission, run.prompt, run.target)
+
     async def apply_result(
         self,
         room_id: str,
@@ -561,11 +741,14 @@ class GameEngine:
         async with room.lock:
             state = room.state
             submission = room.inflight.pop(submission_id, None)
-            if (
-                state.round is None
-                or submission is None
-                or submission.round_no != state.round.number
-            ):
+            if submission is None:
+                return
+
+            if state.config.mode is GameMode.BLITZ:
+                await self._apply_blitz_result(room, submission, result, error)
+                return
+
+            if state.round is None or submission.round_no != state.round.number:
                 # From a round that has already moved on. Drop it.
                 return
 
@@ -611,10 +794,81 @@ class GameEngine:
                 "result": result.model_dump(mode="json") if result else None,
             }))
 
+    async def _apply_blitz_result(
+        self,
+        room: Room,
+        submission: Submission,
+        result: ProcessResult | None,
+        error: str | None,
+    ) -> None:
+        """Judge one frame against the face its player was on, and pay for it now.
+
+        Points are committed here rather than at a boundary, because blitz has no
+        boundary and its leaderboard is live. That is safe in a way classic's deferral is
+        not meant to be: a passed face is final, and nothing later can take it back.
+        """
+        state = room.state
+        blitz = state.blitz
+        run = blitz.runs.get(submission.player_id) if blitz is not None else None
+        if run is None or submission.round_no != run.face_no:
+            # A face this player has already left -- passed, skipped or run out. Same rule
+            # as classic's round check: record nothing, claim nothing.
+            return
+
+        if error is not None:
+            submission.status = SubmissionStatus.FAILED
+            submission.error = error
+            submission.correct = None
+        else:
+            submission.status = SubmissionStatus.DONE
+            submission.result = result
+            submission.correct = (
+                self._is_correct(result, run.target, self.pass_threshold(room))
+                if state.phase is Phase.ROUND
+                else None
+            )
+
+        player = state.players.get(submission.player_id)
+        if submission.correct is True and player is not None and result is not None:
+            points = score_face(result.confidence)
+            player.points += points
+            player.rounds_correct += 1
+            face_no = run.face_no
+            self._advance(room, run, utcnow(), "passed", points, result.confidence)
+            event = EventMessage(kind="blitz_face_passed", payload={
+                "player_id": player.id,
+                "face_no": face_no,
+                "points": points,
+                "confidence": result.confidence,
+                "total": player.points,
+            })
+        else:
+            # Newest read, for the UI -- the same thing `round.submissions[pid]` shows.
+            run.submission = submission
+            event = EventMessage(kind="submission_scored", payload={
+                "player_id": submission.player_id,
+                "submission_id": submission.id,
+                "status": submission.status.value,
+                "correct": submission.correct,
+                "passed": False,
+                "result": result.model_dump(mode="json") if result else None,
+            })
+        await self._publish(room, event)
+
     @staticmethod
-    def _is_correct(result: ProcessResult | None, target: str) -> bool:
-        """The whole passing rule: the processor's label has to be the one asked for."""
-        return result is not None and result.label == target
+    def _is_correct(
+        result: ProcessResult | None, target: str, min_confidence: float = 0.0
+    ) -> bool:
+        """The whole passing rule: the processor's label has to be the one asked for.
+
+        `min_confidence` is blitz's pass threshold. It defaults to 0.0, so classic callers
+        that pass nothing get exactly the behaviour they always had.
+        """
+        return (
+            result is not None
+            and result.label == target
+            and result.confidence >= min_confidence
+        )
 
     @staticmethod
     def _end_round_if_all_passed(room: Room) -> None:
@@ -622,6 +876,10 @@ class GameEngine:
 
         Caller holds the room lock. Only connected players count, so a closed tab does not
         hold the round open; with nobody connected the round simply runs out its clock.
+
+        Blitz needs no check of its own here: it leaves `state.round` None for the whole
+        game, so the guard below already makes every call a no-op. There is nothing to end
+        early in a blitz anyway -- its clock is the only thing that finishes it.
         """
         state = room.state
         if state.phase is not Phase.ROUND or state.round is None:
@@ -629,6 +887,160 @@ class GameEngine:
         connected = [p.id for p in state.players.values() if p.connected]
         if connected and all(pid in state.round.passed for pid in connected):
             room.round_done.set()
+
+    # --- blitz runs ------------------------------------------------------
+    #
+    # A blitz has no rounds: each player holds a `BlitzRun` cursor into one sequence the
+    # whole room shares, and they advance independently. Every deadline in here is a
+    # stored timestamp evaluated lazily -- `_active_run` is the choke point every inbound
+    # path goes through -- plus one sweep from the driver, so a blitz still costs exactly
+    # one asyncio task per room. A task per player would not scale and is not needed.
+    #
+    # Every method below assumes the caller holds the room lock.
+
+    def pass_threshold(self, room: Room) -> float:
+        """The confidence a read needs to pass. Zero outside blitz, i.e. label-only."""
+        config = room.state.config
+        return config.blitz_pass_confidence if config.mode is GameMode.BLITZ else 0.0
+
+    def _entry(self, room: Room, cursor: int) -> Prompt:
+        """The sequence entry at `cursor`.
+
+        Wraps modulo the length. The sequence is built long enough that nobody should
+        reach the end, and wrapping is one line of insurance rather than a rule anyone has
+        to reason about -- it wraps identically for every player, so the shared-order
+        guarantee survives it.
+        """
+        sequence = room.blitz_sequence
+        return sequence[cursor % len(sequence)]
+
+    def _face_deadline(self, room: Room, started_at: datetime) -> datetime:
+        """When the face started at `started_at` runs out, never past the game clock.
+
+        The same clamp `_begin_round` applies to a round: it keeps "no per-player deadline
+        outlives the game" exactly true, so the UI can never count down past the end.
+        """
+        ends_at = started_at + timedelta(seconds=room.state.config.blitz_face_seconds)
+        if room.state.game_ends_at is not None:
+            ends_at = min(ends_at, room.state.game_ends_at)
+        return ends_at
+
+    def _new_run(self, room: Room, player_id: str, now: datetime) -> BlitzRun:
+        entry = self._entry(room, 0)
+        return BlitzRun(
+            player_id=player_id,
+            cursor=0,
+            face_no=1,
+            prompt=entry.text,
+            target=entry.target,
+            face_started_at=now,
+            face_ends_at=self._face_deadline(room, now),
+        )
+
+    def _advance(
+        self,
+        room: Room,
+        run: BlitzRun,
+        now: datetime,
+        outcome: Literal["passed", "skipped", "expired"],
+        points: int = 0,
+        confidence: float | None = None,
+    ) -> None:
+        """Close this player's face and open their next one.
+
+        Deliberately does not touch `skip_ready_at`: waiting a face out must not buy you
+        a skip, and skipping sets its own cooldown afterwards.
+        """
+        room.blitz_done.setdefault(run.player_id, []).append(BlitzFace(
+            index=run.cursor,
+            prompt=run.prompt,
+            target=run.target,
+            outcome=outcome,
+            points=points,
+            confidence=confidence,
+            seconds=max(0.0, (now - run.face_started_at).total_seconds()),
+        ))
+        if outcome == "passed":
+            run.passed += 1
+        elif outcome == "skipped":
+            run.skipped += 1
+        else:
+            run.expired += 1
+
+        run.cursor += 1
+        run.face_no = run.cursor + 1
+        entry = self._entry(room, run.cursor)
+        run.prompt = entry.text
+        run.target = entry.target
+        run.face_started_at = now
+        run.face_ends_at = self._face_deadline(room, now)
+        # The new face has had no frames yet; a stale read here would show the UI a
+        # confidence belonging to the face the player just finished.
+        run.submission = None
+        run.last_outcome = outcome
+        run.last_points = points
+        run.last_confidence = confidence
+
+    def _ensure_runs(self, room: Room, now: datetime) -> bool:
+        """Open a run for anyone who does not have one yet. Covers mid-blitz joiners."""
+        blitz = room.state.blitz
+        if blitz is None:
+            return False
+        changed = False
+        for player_id in room.state.players:
+            if player_id not in blitz.runs:
+                blitz.runs[player_id] = self._new_run(room, player_id, now)
+                changed = True
+        return changed
+
+    def _expire_faces(self, room: Room, now: datetime) -> bool:
+        """Roll over every face whose time ran out. Returns whether anything moved.
+
+        Does nothing once the game clock is spent, and that guard is load-bearing:
+        `_face_deadline` clamps every face to `game_ends_at`, so past that instant each
+        replacement face is born already expired and the loop below would never
+        terminate. The driver is about to end the game anyway, so there is nothing to do.
+        """
+        blitz = room.state.blitz
+        if blitz is None:
+            return False
+        ends_at = room.state.game_ends_at
+        if ends_at is not None and now >= ends_at:
+            return False
+        changed = False
+        for run in blitz.runs.values():
+            # A loop, not an `if`: a player whose tab was asleep can be several faces
+            # behind, and leaving them on a long-dead face would freeze their UI.
+            while run.face_ends_at <= now:
+                self._advance(room, run, run.face_ends_at, "expired")
+                changed = True
+        return changed
+
+    def _active_run(self, room: Room, player_id: str) -> BlitzRun | None:
+        """This player's run, brought up to date first. The lazy-evaluation choke point."""
+        if room.state.blitz is None or room.state.phase is not Phase.ROUND:
+            return None
+        now = utcnow()
+        self._ensure_runs(room, now)
+        self._expire_faces(room, now)
+        return room.state.blitz.runs.get(player_id)
+
+    def current_face(self, room: Room, player_id: str) -> tuple[str, str] | None:
+        """The (prompt, target) this player is being asked for right now, either mode.
+
+        None when there is nothing for them to do: no round, already passed it in classic,
+        or no live run in blitz. The one helper the Presage fast path reads, so that path
+        does not have to know which mode it is in.
+        """
+        state = room.state
+        if state.phase is not Phase.ROUND:
+            return None
+        if state.config.mode is GameMode.BLITZ:
+            run = self._active_run(room, player_id)
+            return (run.prompt, run.target) if run is not None else None
+        if state.round is None or player_id in state.round.passed:
+            return None
+        return (state.round.prompt, state.round.target)
 
     # --- round driver ----------------------------------------------------
 
@@ -668,6 +1080,74 @@ class GameEngine:
         except Exception:
             log.exception("game task crashed for room %s", room.state.room_id)
             await self._finish_game(room, "crashed")
+
+    async def _run_blitz(self, room: Room) -> None:
+        """One task per active room, same as `_run_game`, for a game with no rounds.
+
+        All it owns is the global clock and the per-face expiry sweep: there is nothing to
+        begin or end per round, no intermission, and no early finish -- a blitz is over
+        when its clock is, whatever anyone has done.
+
+        Kept separate from `_run_game` rather than branching inside it, because the two
+        share only `_seconds_left` and `_finish_game`; everything that makes `_run_game`
+        what it is (the round loop, budgets, `round_done`, intermissions) has no meaning
+        here, so a branch would have been dispatch with extra steps.
+        """
+        try:
+            await self._begin_blitz(room)
+            tick = max(0.05, self.settings.blitz_tick_ms / 1000)
+            while True:
+                left = self._seconds_left(room)
+                if left <= 0:
+                    break
+                # Outside the lock, like every other wait in the drivers.
+                await asyncio.sleep(min(tick, left))
+                await self._sweep_blitz(room)
+            await self._finish_game(room, "time_up")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("blitz task crashed for room %s", room.state.room_id)
+            await self._finish_game(room, "crashed")
+
+    async def _begin_blitz(self, room: Room) -> None:
+        """Materialize the shared sequence and open everyone's first face at once."""
+        async with room.lock:
+            state = room.state
+            config = state.config
+            # One face a second is the practical ceiling (min_frame_interval_ms gates
+            # uploads at four a second and nobody changes face that fast), so this is
+            # generous. `_entry` wraps anyway, so running out is not a failure mode.
+            length = max(self.settings.blitz_sequence_min_length, config.blitz_seconds + 16)
+            room.blitz_sequence = build_sequence(length)
+            room.blitz_done.clear()
+            room.inflight.clear()
+            now = utcnow()
+            state.phase = Phase.ROUND
+            # Blitz has no rounds, and exactly one of `round` / `blitz` is ever set.
+            state.round = None
+            state.blitz = BlitzState(sequence_length=len(room.blitz_sequence))
+            self._ensure_runs(room, now)
+            await self._publish(room, EventMessage(kind="blitz_started", payload={
+                "ends_at": state.game_ends_at.isoformat() if state.game_ends_at else None,
+                "sequence_length": state.blitz.sequence_length,
+                "face_seconds": config.blitz_face_seconds,
+            }))
+            # No narration: Uncle Damage speaks per round, and a blitz would mean a Gemini
+            # line plus a TTS round trip per face per player, several times a second,
+            # against prompts that differ per player. See deploy/README.md on the box's size.
+
+    async def _sweep_blitz(self, room: Room) -> None:
+        """Roll over lapsed faces, and pick up anyone who joined mid-blitz."""
+        async with room.lock:
+            if room.state.phase is not Phase.ROUND or room.state.blitz is None:
+                return
+            now = utcnow()
+            changed = self._ensure_runs(room, now)
+            # Bitwise, not `or`: both have to run, and `or` would short-circuit the sweep.
+            changed |= self._expire_faces(room, now)
+            if changed:
+                await self._publish(room)
 
     def _seconds_left(self, room: Room) -> float:
         """Game time remaining. Read without the lock: one field, no await in between."""
@@ -750,6 +1230,12 @@ class GameEngine:
     async def _finish_game(self, room: Room, reason: str = "rounds_complete") -> None:
         async with room.lock:
             room.state.phase = Phase.GAME_OVER
+            # Blitz's answer to appending a scored round to `history`: the per-face
+            # breakdown is published once, here, instead of riding in every snapshot all
+            # game. Runs through the crash and cancel paths too, which is the point.
+            if room.state.blitz is not None:
+                for player_id, run in room.state.blitz.runs.items():
+                    run.faces = room.blitz_done.get(player_id, [])
             # A crashed game's scores are whatever it got to, not a result: not recorded.
             if self.highscores is not None and reason != "crashed":
                 finals = [
@@ -758,7 +1244,7 @@ class GameEngine:
                     if p.client_id
                 ]
                 try:
-                    await self.highscores.record(finals)
+                    await self.highscores.record(finals, room.state.config.mode)
                 except OSError:
                     # A full or read-only disk must not stop the game from ending.
                     log.exception("could not save high scores for room %s", room.state.room_id)

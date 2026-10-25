@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { useMusic, useOnChange } from "../audio/hooks";
 import { sfx } from "../audio/sfx";
@@ -10,6 +10,7 @@ import { useVitalsReporter } from "../hooks/useVitalsReporter";
 import { UncleDamage } from "../components/art";
 import { useSpectra } from "../components/GameShell";
 import { LeaveGame } from "../components/LeaveGame";
+import { Webcam } from "../components/Webcam";
 import {
   Avatar,
   ChunkyCard,
@@ -21,36 +22,6 @@ import {
 } from "../components/ui";
 
 const BAR_HEIGHTS = [10, 22, 14, 28, 18, 24, 8, 20];
-
-function Webcam({
-  stream,
-  ready,
-  error,
-}: {
-  stream: MediaStream | null;
-  ready: boolean;
-  error: string | null;
-}) {
-  // A preview of the game's camera, which GameShell keeps running between rounds.
-  const attach = useCallback(
-    (video: HTMLVideoElement | null) => {
-      if (video && video.srcObject !== stream) video.srcObject = stream;
-    },
-    [stream],
-  );
-
-  return (
-    <section className="webcam" aria-label="Your webcam">
-      <video ref={attach} autoPlay muted playsInline hidden={!ready} />
-      {error && (
-        <p className="webcam__msg">
-          <b>camera said no</b>
-          {error}
-        </p>
-      )}
-    </section>
-  );
-}
 
 /**
  * The round's soundtrack, driven by the clock and the scoreboard.

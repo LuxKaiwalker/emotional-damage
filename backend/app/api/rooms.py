@@ -3,8 +3,11 @@ from fastapi import APIRouter, HTTPException
 from app.api.deps import EngineDep
 from app.game.engine import GameError
 from app.models import (
+    BlitzConfigRequest,
+    BlitzSkipResponse,
     CreateRoomRequest,
     GameConfig,
+    GameMode,
     GameState,
     JoinRoomRequest,
     LeaveRoomResponse,
@@ -86,6 +89,59 @@ async def set_round_timing(
         )
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{room_id}/mode", response_model=GameConfig)
+async def set_mode(
+    room_id: str, player_id: str, mode: GameMode, engine: EngineDep
+) -> GameConfig:
+    """Host only, in the lobby: which rules the next game plays by.
+
+    An unknown mode is a 422 from FastAPI's own enum validation, before the engine sees it.
+    """
+    try:
+        return await engine.set_mode(room_id, player_id, mode)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{room_id}/blitz-config", response_model=GameConfig)
+async def set_blitz_config(
+    room_id: str, player_id: str, body: BlitzConfigRequest, engine: EngineDep
+) -> GameConfig:
+    """Host only, in the lobby: the blitz clock, the per-face limit and the pass bar."""
+    try:
+        return await engine.set_blitz_config(
+            room_id,
+            player_id,
+            blitz_seconds=body.blitz_seconds,
+            blitz_face_seconds=body.blitz_face_seconds,
+            blitz_pass_confidence=body.blitz_pass_confidence,
+            blitz_live_leaderboard=body.blitz_live_leaderboard,
+        )
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{room_id}/skip", response_model=BlitzSkipResponse)
+async def skip_face(
+    room_id: str, player_id: str, engine: EngineDep
+) -> BlitzSkipResponse:
+    """Blitz only: move this player on to the next face. Free, but on a cooldown.
+
+    429 while the cooldown is running, and its detail is the player-facing sentence --
+    the client shows it as-is, like every other refusal.
+    """
+    try:
+        run = await engine.skip_face(room_id, player_id)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return BlitzSkipResponse(
+        face_no=run.face_no,
+        prompt=run.prompt,
+        target=run.target,
+        skip_ready_at=run.skip_ready_at,
+    )
 
 
 @router.post("/{room_id}/restart", status_code=200)

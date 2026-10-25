@@ -1,6 +1,8 @@
 import type {
+  BlitzSkipResponse,
   FrameUploadResult,
   GameConfig,
+  GameMode,
   GameState,
   HighScore,
   LeaveRoomResponse,
@@ -33,10 +35,19 @@ const FIELD_LABELS: Record<string, string> = {
   round_seconds: "Round 1 length",
   round_decrement_seconds: "The drop per round",
   rounds: "Rounds",
+  mode: "Mode",
+  blitz_seconds: "Blitz length",
+  blitz_face_seconds: "The limit per face",
+  blitz_pass_confidence: "The pass threshold",
 };
 
 /** Fields measured in seconds, so their limits read "at least 1s" rather than "at least 1". */
-const SECONDS_FIELDS = new Set(["round_seconds", "round_decrement_seconds"]);
+const SECONDS_FIELDS = new Set([
+  "round_seconds",
+  "round_decrement_seconds",
+  "blitz_seconds",
+  "blitz_face_seconds",
+]);
 
 interface ValidationIssue {
   type?: string;
@@ -143,6 +154,42 @@ export const api = {
   setRounds: (roomId: string, playerId: string, rounds: number) =>
     request<{ rounds_per_game: number }>(
       `/rooms/${encodeURIComponent(roomId)}/rounds?player_id=${encodeURIComponent(playerId)}&rounds=${rounds}`,
+      { method: "POST" },
+    ),
+
+  /** Host only, in the lobby: which rules the next game plays by. */
+  setMode: (roomId: string, playerId: string, mode: GameMode) =>
+    request<GameConfig>(
+      `/rooms/${encodeURIComponent(roomId)}/mode?player_id=${encodeURIComponent(playerId)}&mode=${mode}`,
+      { method: "POST" },
+    ),
+
+  /**
+   * Host only, in the lobby: the blitz clock, the per-face limit and the pass bar.
+   * 422 with a readable reason when the per-face limit does not fit in the blitz.
+   */
+  setBlitzConfig: (
+    roomId: string,
+    playerId: string,
+    config: {
+      blitz_seconds: number;
+      blitz_face_seconds: number;
+      blitz_pass_confidence: number;
+      blitz_live_leaderboard: boolean;
+    },
+  ) =>
+    request<GameConfig>(
+      `/rooms/${encodeURIComponent(roomId)}/blitz-config?player_id=${encodeURIComponent(playerId)}`,
+      json(config),
+    ),
+
+  /**
+   * Blitz only: move this player on to the next face. Free, but on a cooldown, so a 429
+   * is ordinary operation -- its message is the sentence to put on screen.
+   */
+  skipFace: (roomId: string, playerId: string) =>
+    request<BlitzSkipResponse>(
+      `/rooms/${encodeURIComponent(roomId)}/skip?player_id=${encodeURIComponent(playerId)}`,
       { method: "POST" },
     ),
 

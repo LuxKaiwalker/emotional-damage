@@ -51,6 +51,41 @@ the processor, the right move for live camera input is to drop *stale* frames, n
 backlog. Each round keeps one submission slot per player — newest frame wins — and points are
 committed to totals when the **server** ends the round.
 
+## Two modes
+
+The host picks one in the lobby (`POST /api/rooms/{id}/mode`). It is a `GameConfig` field,
+so it survives a restart, and each mode has its own settings — the lobby shows only the
+selected mode's rows.
+
+| | **Classic** | **Blitzkrieg** |
+| --- | --- | --- |
+| Shape | Shared rounds, everyone on the same prompt | One clock, no rounds |
+| Progress | Room-global `state.round` | Per player: `state.blitz.runs[player_id]` |
+| Pace | Everyone waits for the round to end | Each player advances the moment they pass |
+| Points | speed + accuracy + placement, committed at the round end | `100` flat + accuracy, committed on the spot |
+| Stuck on a face | Nothing you can do; the round is lost | Skip it (free, on a cooldown) |
+| Driver | `GameEngine._run_game` | `GameEngine._run_blitz` |
+
+**Blitzkrieg** is the fast, competitive one: whoever lands more faces inside the clock
+wins, so volume is the axis rather than being first. Everyone walks **the same sequence
+of faces in the same order** — that is what keeps an asynchronous race fair — but each
+player has their own cursor into it. A face the player cannot land rolls over on its own
+after `BLITZ_FACE_SECONDS`, or they can skip it early.
+
+Two things about that sequence are deliberate and worth not undoing:
+
+- **It never reaches the client.** It lives on `store.Room`, server-side, beside
+  `inflight`. A client holding the order could read ahead and pre-make the next face,
+  which would defeat the shared sequence's entire purpose — and a 300-entry list in every
+  snapshot, several times a second, is not free on a one-core box either.
+- **No two consecutive faces share a `target`.** A Presage reading stays valid for
+  `PRESAGE_MAX_AGE_MS`, and passing advances the cursor immediately, so a neighbouring
+  repeat would let one held expression pass the next face for nothing. `build_sequence`
+  guarantees it and `test_blitz_sequence.py` pins it.
+
+Uncle Damage does not narrate a blitz: a Gemini line plus a TTS round trip *per face per
+player* is hundreds of calls a game, against prompts that differ per player.
+
 ## Game loop
 
 `LOBBY → ROUND(prompt, deadline) → SCORING → … → GAME_OVER`, driven by one `asyncio.Task` per
@@ -131,6 +166,7 @@ the longest-tenured player still there, so the room never ends up with no one ab
 | --- | --- |
 | Real frame processing | `backend/app/processing/custom.py`, then `PROCESSOR=custom` |
 | Game rules, phases, scoring | `backend/app/game/engine.py` |
+| The blitz order players walk | `backend/app/game/prompts.py`, `build_sequence` |
 | Round prompts and their target labels | `backend/app/game/prompts.py` |
 | Multi-process state (Redis) | `backend/app/game/store.py` |
 | Frames in object storage | `backend/app/capture/media.py` |
@@ -171,6 +207,9 @@ uploaded frame.
 | `POST` | `/api/rooms/{id}/join` | join by room id **or** join code |
 | `GET` | `/api/rooms/{id}` | state snapshot (REST fallback for the WS) |
 | `POST` | `/api/rooms/{id}/start` | host only, `?player_id=` |
+| `POST` | `/api/rooms/{id}/mode` | host only, in the lobby, `?mode=classic\|blitz` |
+| `POST` | `/api/rooms/{id}/blitz-config` | host only, in the lobby: the blitz clock, per-face limit, pass bar |
+| `POST` | `/api/rooms/{id}/skip` | blitz only: move this player to the next face (429 inside the cooldown) |
 | `POST` | `/api/rooms/{id}/restart` | host only, after `game_over`: scores cleared, back to the lobby |
 | `POST` | `/api/rooms/{id}/leave` | `?player_id=` → `{room_destroyed}`; the last one out closes the room |
 | `POST` | `/api/rooms/{id}/frames` | multipart JPEG + `player_id` → `202 {submission_id}` |
@@ -193,6 +232,12 @@ rather than leaving it pending — see the scoring notes above.
 | `test_rooms.py` | join codes, capacity, host handoff, leaving, and both destruction paths |
 | `test_backpressure.py` | every frame the server drops is settled, and a late result is not marked correct |
 | `test_restart.py` | scores cleared, room identity kept, a second game played in the same room |
+| `test_blitz_flow.py` | blitz end to end: points per face, cursors diverging, one shared order |
+| `test_blitz_sequence.py` | `build_sequence`: length, coverage, and no repeated target in a row |
+| `test_blitz_skip.py` | skip advances and pays nothing; the cooldown, and what does not reset it |
+| `test_blitz_timing.py` | faces lapsing on the sweep, deadlines inside the game clock, the breakdown |
+| `test_blitz_threshold.py` | the pass bar, and the proof it did not leak into classic |
+| `test_blitz_config.py` | mode and blitz settings: host-only, lobby-only, and surviving a restart |
 
 Scoring is asserted against `test-hit` / `test-miss` processors registered in `conftest.py`
 via `processing.registry.register()` — the real rule is "label equals target" and the target

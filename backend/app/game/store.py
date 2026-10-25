@@ -3,6 +3,9 @@
 Deliberately the narrowest possible surface, because this is the thing you replace first:
 to run more than one backend process, back these methods with Redis (state as JSON, plus a
 pub/sub channel per room so every process's ConnectionManager sees every broadcast).
+
+Note the server-side-only fields on `Room` -- `inflight`, `blitz_sequence`, `blitz_done` --
+are not part of `GameState` and so would need rehoming too, not just the state JSON.
 """
 
 import asyncio
@@ -11,7 +14,8 @@ import string
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from app.models import GameState, Submission
+from app.game.prompts import Prompt
+from app.models import BlitzFace, GameState, Submission
 
 # Letters only: a join code gets read out loud across a room, and digits invite the
 # classic 0/O and 1/I mix-ups. 26**4 is ~457k codes, which is plenty of headroom for
@@ -49,6 +53,15 @@ class Room:
     # Set when every connected player has passed, so the round driver can end the round
     # early instead of sleeping out the clock. Replaced every round.
     round_done: asyncio.Event = field(default_factory=asyncio.Event)
+    # --- blitz (PROCESSOR-agnostic; both empty outside a blitz) -----------
+    # The shared order every player walks, materialized once at game start. Server-side
+    # on purpose, like `inflight`: it is bulky, and a client holding it could read ahead
+    # and pre-make the next face, which is exactly what the shared sequence prevents.
+    blitz_sequence: list[Prompt] = field(default_factory=list)
+    # player_id -> their finished faces, accumulated while the blitz runs and copied onto
+    # BlitzRun.faces once, at game over. Keeping it off the state is what stops a blitz
+    # snapshot from growing all game. Server-side only; cleared by a restart.
+    blitz_done: dict[str, list[BlitzFace]] = field(default_factory=dict)
 
 
 class InMemoryRoomStore:

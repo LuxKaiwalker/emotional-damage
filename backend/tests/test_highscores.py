@@ -85,3 +85,31 @@ def test_a_corrupt_file_starts_empty_instead_of_crashing(tmp_path):
     path = tmp_path / "scores.json"
     path.write_text("{not json")
     assert HighScoreStore(path).get(ALICE) is None
+
+def test_blitz_bests_are_filed_apart_from_classic():
+    """The two modes do not score on the same scale.
+
+    A blitz total runs into the thousands where a classic game caps at 2000, so a single
+    key would let one blitz permanently bury a browser's real classic best.
+    """
+    from app.game.highscores import HighScoreStore
+    from app.models import GameMode
+
+    assert HighScoreStore.key("abc") == "abc", "classic keeps the bare id, so old bests count"
+    assert HighScoreStore.key("abc", GameMode.CLASSIC) == "abc"
+    assert HighScoreStore.key("abc", GameMode.BLITZ) == "abc:blitz"
+
+
+async def test_a_blitz_does_not_overwrite_a_classic_best(tmp_path):
+    from app.game.highscores import HighScoreStore
+    from app.models import GameMode
+
+    store = HighScoreStore(tmp_path / "highscores.json")
+    await store.record([("browser", "ace", 1800)])
+    await store.record([("browser", "ace", 4200)], GameMode.BLITZ)
+
+    classic = store.get("browser")
+    blitz = store.get(HighScoreStore.key("browser", GameMode.BLITZ))
+    assert classic is not None and classic.best == 1800
+    assert blitz is not None and blitz.best == 4200
+

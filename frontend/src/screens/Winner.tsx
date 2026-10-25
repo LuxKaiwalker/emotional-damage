@@ -14,7 +14,7 @@ export function Winner() {
   const game = useGame();
   useFollowServerPhase(game);
 
-  const { state, session, isHost, standings } = game;
+  const { state, session, isHost, standings, mode, myRun } = game;
   const [scanOpen, setScanOpen] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +30,11 @@ export function Winner() {
   const others = standings.slice(1);
   const lastRank = others[others.length - 1]?.rank;
   const totalRounds = state?.config.rounds_per_game ?? 0;
+  const isBlitz = mode === "blitz";
+  // In blitz there is no round count to be out of: the clock is the limit, so the
+  // interesting number is how many faces fitted into it.
+  const championRun =
+    isBlitz && state?.blitz ? state.blitz.runs[standings[0]?.player.id ?? ""] : undefined;
 
   const playAgain = async () => {
     if (!session || busy) return;
@@ -51,7 +56,10 @@ export function Winner() {
       <Confetti className="confetti" />
       <PageShell bg="cyan" maxWidth={1060} gap={26} innerClassName="winner__inner">
         <Pill dark style={{ padding: "8px 16px", fontSize: 16 }}>
-          game over · {totalRounds} rounds of suffering complete
+          game over ·{" "}
+          {isBlitz
+            ? `${state?.config.blitz_seconds ?? 0}s of blitzkrieg complete`
+            : `${totalRounds} rounds of suffering complete`}
         </Pill>
 
         <div className="champion">
@@ -79,7 +87,14 @@ export function Winner() {
           <ChunkyCard className="stat">
             <div>Faces nailed</div>
             <div>
-              {champion?.player.rounds_correct ?? 0} <small>/ {totalRounds}</small>
+              {champion?.player.rounds_correct ?? 0}{" "}
+              {isBlitz ? (
+                <small>
+                  {championRun ? `+${championRun.skipped} skipped` : "in the blitz"}
+                </small>
+              ) : (
+                <small>/ {totalRounds}</small>
+              )}
             </div>
           </ChunkyCard>
           <ChunkyCard className="stat">
@@ -130,6 +145,7 @@ export function Winner() {
         open={scanOpen}
         onClose={() => setScanOpen(false)}
         rounds={state?.history ?? []}
+        faces={myRun?.faces}
         playerId={session?.player_id}
       />
     </div>

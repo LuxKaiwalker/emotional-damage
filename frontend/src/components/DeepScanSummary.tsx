@@ -1,5 +1,5 @@
 import { ChunkyButton, Modal, Pill } from "./ui";
-import type { Round } from "../types";
+import type { BlitzFace, Round } from "../types";
 
 /** One played round, as this player experienced it. */
 interface ScanRound {
@@ -27,6 +27,26 @@ function scanRounds(rounds: Round[], playerId: string | undefined): ScanRound[] 
   });
 }
 
+/**
+ * The blitz equivalent, normalized onto the same shape so everything below is shared.
+ *
+ * A blitz run has no `submissions` to read: the server publishes the per-face breakdown
+ * once, at game over, which is what `BlitzRun.faces` is.
+ */
+function scanFaces(faces: BlitzFace[]): ScanRound[] {
+  return faces.map((face) => ({
+    number: face.index + 1,
+    prompt: face.prompt,
+    target: face.target,
+    read:
+      face.confidence === null
+        ? null
+        : { label: face.target, confidence: face.confidence },
+    correct: face.outcome === "passed",
+    points: face.points,
+  }));
+}
+
 function vibeCheck(rounds: ScanRound[]): string {
   const nailed = rounds.filter((r) => r.correct).length;
   const missed = rounds.find((r) => r.read && !r.correct);
@@ -37,19 +57,25 @@ function vibeCheck(rounds: ScanRound[]): string {
   return `${nailed} of ${rounds.length} faces nailed.${miss} Uncle Damage saw everything.`;
 }
 
-/** End-of-game deep scan: every round actually played (`state.history`), in order. */
+/**
+ * End-of-game deep scan: every round actually played (`state.history`), in order -- or
+ * every face, when the game was a blitz. Exactly one of the two sources is ever filled.
+ */
 export function DeepScanSummary({
   open,
   onClose,
   rounds: history,
+  faces,
   playerId,
 }: {
   open: boolean;
   onClose: () => void;
   rounds: Round[];
+  /** This player's blitz breakdown. Takes precedence when present. */
+  faces?: BlitzFace[];
   playerId: string | undefined;
 }) {
-  const rounds = scanRounds(history, playerId);
+  const rounds = faces?.length ? scanFaces(faces) : scanRounds(history, playerId);
   const reads = rounds.flatMap((r) => (r.read ? [r.read] : []));
   const confidence = reads.length
     ? Math.round((reads.reduce((sum, r) => sum + r.confidence, 0) / reads.length) * 100)

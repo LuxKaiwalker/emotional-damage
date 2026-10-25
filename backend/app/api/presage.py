@@ -69,13 +69,25 @@ async def _score_if_hit(engine: GameEngine, room, room_id: str, player_id: str) 
     limit, the already-passed check and speed points (from `received_at`, now) all hold.
     Misses are left to the uploads: a submission per reading would mean a room-wide state
     broadcast several times a second per player, on a single core.
+
+    `accepted.target` is the player's *own* target, so the result is judged against the
+    right face even if they advanced between the two awaits -- `apply_result` drops it in
+    that case rather than paying for a face they have left.
     """
-    state = room.state
-    if state.phase is not Phase.ROUND or state.round is None or player_id in state.round.passed:
+    # Whichever face this player is on -- the shared round in classic, their own cursor in
+    # blitz. Asking the engine keeps this path from having to know which mode it is in.
+    face = engine.current_face(room, player_id)
+    if face is None:
         return False
+    _, target = face
     reading = READINGS.latest(room_id, player_id)
-    target = state.round.target
-    if reading is None or judge(reading, target)[0] != target:
+    if reading is None:
+        return False
+    label, confidence = judge(reading, target)
+    # The threshold is checked *before* submitting, not just by `apply_result`. A reading
+    # that cannot pass would otherwise spend the player's min_frame_interval_ms slot on a
+    # submission with no upside -- which in blitz costs them faces.
+    if label != target or confidence < engine.pass_threshold(room):
         return False
 
     try:

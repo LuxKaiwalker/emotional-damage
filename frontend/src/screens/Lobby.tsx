@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useMusic, useOnChange } from "../audio/hooks";
 import { sfx } from "../audio/sfx";
 import { useFollowServerPhase, useGame } from "../game";
+import type { GameMode } from "../types";
 import {
   Avatar,
   ChunkyButton,
@@ -16,13 +17,63 @@ import {
 /** The game lengths the server accepts (ROUND_CHOICES in backend/app/game/engine.py). */
 const ROUND_CHOICES = [5, 10];
 
+/** The modes the server accepts (GameMode in backend/app/models.py). */
+const MODE_CHOICES: { value: GameMode; label: string }[] = [
+  { value: "classic", label: "Classic" },
+  { value: "blitz", label: "Blitzkrieg" },
+];
+
+/**
+ * A row of mutually exclusive options for the host, or a read-only sticker for everyone
+ * else. The same markup the rounds picker has always used, so it inherits its pop.
+ */
+function PickRow<T extends string | number>({
+  label,
+  value,
+  options,
+  editable,
+  onPick,
+}: {
+  label: string;
+  value: T | undefined;
+  options: { value: T; label: string }[];
+  editable: boolean;
+  onPick: (next: T) => void;
+}) {
+  const current = options.find((o) => o.value === value);
+  return (
+    <div className="rules__row">
+      <span>{label}</span>
+      {editable ? (
+        <span className="rounds-pick" role="group" aria-label={label}>
+          {options.map((option) => (
+            <button
+              key={String(option.value)}
+              type="button"
+              className="sticker rounds-pick__opt"
+              aria-pressed={value === option.value}
+              onClick={() => onPick(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </span>
+      ) : (
+        <span className="sticker rules__vibe" key={current?.label ?? "…"}>
+          {current?.label ?? "…"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 const TAG_BG: Record<string, string> = {
   HOST: "var(--yellow)",
   READY: "var(--lime)",
   "NOT READY": "var(--white)",
 };
 
-/** A seconds value with −/+ steppers for the host, or a plain sticker for everyone else. */
+/** A number with −/+ steppers for the host, or a plain sticker for everyone else. */
 function TimingRow({
   label,
   value,
@@ -32,6 +83,7 @@ function TimingRow({
   editable,
   busy,
   onChange,
+  unit = "s",
 }: {
   label: string;
   value: number | undefined;
@@ -42,8 +94,10 @@ function TimingRow({
   editable: boolean;
   busy: boolean;
   onChange: (next: number) => void;
+  /** Suffix on the value and in the button labels. Seconds unless told otherwise. */
+  unit?: string;
 }) {
-  const shown = value === undefined ? "…" : `${value}s`;
+  const shown = value === undefined ? "…" : `${value}${unit}`;
   if (!editable || value === undefined) {
     return (
       <div className="rules__row">
@@ -58,7 +112,7 @@ function TimingRow({
       <span className="seg">
         <button
           type="button"
-          aria-label={`${label}: ${step}s less`}
+          aria-label={`${label}: ${step}${unit} less`}
           disabled={busy || value <= min}
           onClick={() => onChange(Math.max(min, value - step))}
         >
@@ -69,7 +123,7 @@ function TimingRow({
         </span>
         <button
           type="button"
-          aria-label={`${label}: ${step}s more`}
+          aria-label={`${label}: ${step}${unit} more`}
           disabled={busy || value + step > max}
           onClick={() => onChange(value + step)}
         >
@@ -95,7 +149,8 @@ export function Lobby() {
   const [error, setError] = useState<string | null>(null);
   const [savingTiming, setSavingTiming] = useState(false);
   const [timingError, setTimingError] = useState<string | null>(null);
-  useOnChange(error ?? timingError, (now) => now && sfx.error());
+  const [blitzError, setBlitzError] = useState<string | null>(null);
+  useOnChange(error ?? timingError ?? blitzError, (now) => now && sfx.error());
 
   useEffect(() => {
     if (!copied) return;
@@ -142,6 +197,17 @@ export function Lobby() {
     }
   };
 
+  const pickMode = async (mode: GameMode) => {
+    if (!session) return;
+    setError(null);
+    try {
+      // Everyone's lobby swaps to the other mode's rows on the next snapshot.
+      await api.setMode(session.room_id, session.player_id, mode);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change the mode");
+    }
+  };
+
   // No optimistic update: the new config arrives in the next snapshot like everything
   // else, and a refused schedule simply never shows up.
   const setTiming = async (roundSeconds: number, decrement: number) => {
@@ -164,8 +230,37 @@ export function Lobby() {
     }
   };
 
+  /** Blitz settings go up whole, so the server validates the pair it has to check. */
+  const setBlitz = async (over: {
+    blitz_seconds?: number;
+    blitz_face_seconds?: number;
+    blitz_pass_confidence?: number;
+    blitz_live_leaderboard?: boolean;
+  }) => {
+    if (!session || !state || savingTiming) return;
+    const current = state.config;
+    setSavingTiming(true);
+    setBlitzError(null);
+    try {
+      await api.setBlitzConfig(session.room_id, session.player_id, {
+        blitz_seconds: current.blitz_seconds,
+        blitz_face_seconds: current.blitz_face_seconds,
+        blitz_pass_confidence: current.blitz_pass_confidence,
+        blitz_live_leaderboard: current.blitz_live_leaderboard,
+        ...over,
+      });
+    } catch (err) {
+      setBlitzError(
+        err instanceof Error ? err.message : "Could not change the blitz settings",
+      );
+    } finally {
+      setSavingTiming(false);
+    }
+  };
+
   // The server is the source of truth for both the roster and the rules.
   const config = state?.config;
+  const isBlitz = config?.mode === "blitz";
   const roundLengths = config
     ? Array.from(
         { length: config.rounds_per_game },
@@ -204,76 +299,141 @@ export function Lobby() {
 
             <ChunkyCard className="rules">
               <h2>House rules</h2>
-              {/* The host sets the round count and timing; everyone sees it. */}
-              <div className="rules__row">
-                <span>Rounds</span>
-                {isHost ? (
-                  <span
-                    className="rounds-pick"
-                    role="group"
-                    aria-label="Rounds"
-                  >
-                    {ROUND_CHOICES.map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        className="sticker rounds-pick__opt"
-                        aria-pressed={config?.rounds_per_game === n}
-                        onClick={() => void pickRounds(n)}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </span>
-                ) : (
-                  <span className="sticker rules__vibe">
-                    {config?.rounds_per_game ?? "…"}
-                  </span>
-                )}
-              </div>
-              <TimingRow
-                label="Round 1 length"
-                value={config?.round_seconds}
-                step={5}
-                min={1}
-                max={180}
+              {/* The host sets the mode and its settings; everyone sees them. Only the
+                  selected mode's rows are shown, so the card keeps fitting one screen. */}
+              <PickRow
+                label="Mode"
+                value={config?.mode}
+                options={MODE_CHOICES}
                 editable={isHost && !!config}
-                busy={savingTiming}
-                onChange={(v) =>
-                  config && void setTiming(v, config.round_decrement_seconds)
-                }
+                onPick={(mode) => void pickMode(mode)}
               />
-              <TimingRow
-                label="Shorter each round by"
-                value={config?.round_decrement_seconds}
-                step={1}
-                min={0}
-                max={15}
-                editable={isHost && !!config}
-                busy={savingTiming}
-                onChange={(v) =>
-                  config && void setTiming(config.round_seconds, v)
-                }
-              />
-              <div className="rules__row">
-                <span>Round lengths</span>
-                <span className="sticker rules__vibe" key={roundLengths.join()}>
-                  {roundLengths.length
-                    ? roundLengths.map((s) => `${s}s`).join(" → ")
-                    : "…"}
-                </span>
-              </div>
-              {timingError && (
-                <p className="form-error" role="alert" key={timingError}>
-                  {timingError}
+              {isBlitz ? (
+                <>
+                  <TimingRow
+                    label="Blitz length"
+                    value={config?.blitz_seconds}
+                    step={15}
+                    min={30}
+                    max={600}
+                    editable={isHost && !!config}
+                    busy={savingTiming}
+                    onChange={(v) => void setBlitz({ blitz_seconds: v })}
+                  />
+                  <TimingRow
+                    label="Seconds per face"
+                    value={config?.blitz_face_seconds}
+                    step={1}
+                    min={2}
+                    max={60}
+                    editable={isHost && !!config}
+                    busy={savingTiming}
+                    onChange={(v) => void setBlitz({ blitz_face_seconds: v })}
+                  />
+                  <TimingRow
+                    label="Pass threshold"
+                    unit="%"
+                    value={
+                      config
+                        ? Math.round(config.blitz_pass_confidence * 100)
+                        : undefined
+                    }
+                    step={5}
+                    min={0}
+                    max={95}
+                    editable={isHost && !!config}
+                    busy={savingTiming}
+                    onChange={(v) =>
+                      void setBlitz({ blitz_pass_confidence: v / 100 })
+                    }
+                  />
+                  <PickRow
+                    label="Live leaderboard"
+                    value={config ? (config.blitz_live_leaderboard ? "on" : "off") : undefined}
+                    options={[
+                      { value: "on", label: "On" },
+                      { value: "off", label: "Off" },
+                    ]}
+                    editable={isHost && !!config}
+                    onPick={(next) =>
+                      void setBlitz({ blitz_live_leaderboard: next === "on" })
+                    }
+                  />
+                  <div className="rules__row">
+                    <span>Skip cooldown</span>
+                    <span className="sticker rules__vibe">
+                      {config ? `${config.blitz_skip_cooldown_seconds}s` : "…"}
+                    </span>
+                  </div>
+                  <div className="rules__row">
+                    <span>Max points per face</span>
+                    <span className="sticker rules__vibe">
+                      {config?.max_points_per_face ?? "…"}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <PickRow
+                    label="Rounds"
+                    value={config?.rounds_per_game}
+                    options={ROUND_CHOICES.map((n) => ({ value: n, label: String(n) }))}
+                    editable={isHost && !!config}
+                    onPick={(n) => void pickRounds(n)}
+                  />
+                  <TimingRow
+                    label="Round 1 length"
+                    value={config?.round_seconds}
+                    step={5}
+                    min={1}
+                    max={180}
+                    editable={isHost && !!config}
+                    busy={savingTiming}
+                    onChange={(v) =>
+                      config && void setTiming(v, config.round_decrement_seconds)
+                    }
+                  />
+                  <TimingRow
+                    label="Shorter each round by"
+                    value={config?.round_decrement_seconds}
+                    step={1}
+                    min={0}
+                    max={15}
+                    editable={isHost && !!config}
+                    busy={savingTiming}
+                    onChange={(v) =>
+                      config && void setTiming(config.round_seconds, v)
+                    }
+                  />
+                  <div className="rules__row">
+                    <span>Round lengths</span>
+                    <span
+                      className="sticker rules__vibe"
+                      key={roundLengths.join()}
+                    >
+                      {roundLengths.length
+                        ? roundLengths.map((s) => `${s}s`).join(" → ")
+                        : "…"}
+                    </span>
+                  </div>
+                  <div className="rules__row">
+                    <span>Max points per round</span>
+                    <span className="sticker rules__vibe">
+                      {config?.max_points_per_round ?? "…"}
+                    </span>
+                  </div>
+                </>
+              )}
+              {/* Keyed, so a repeated refusal replays the shake. */}
+              {(timingError ?? blitzError) && (
+                <p
+                  className="form-error"
+                  role="alert"
+                  key={timingError ?? blitzError ?? ""}
+                >
+                  {timingError ?? blitzError}
                 </p>
               )}
-              <div className="rules__row">
-                <span>Max points per round</span>
-                <span className="sticker rules__vibe">
-                  {config?.max_points_per_round ?? "…"}
-                </span>
-              </div>
             </ChunkyCard>
           </section>
 

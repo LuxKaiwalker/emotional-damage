@@ -442,29 +442,52 @@ button, input { font-family: inherit; color: var(--ink); }
 .placing { border: var(--border-thin); border-radius: 14px; padding: 10px 16px; font-weight: 700; font-size: 17px; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
 
-/* The round screen fills exactly one viewport on desktop: the webcam takes whatever height is left,
-   and the announcer + Presage panel shrink with viewport height instead of pushing the page into a scroll. */
-.page--round { padding: 24px; }
+/* The playing screens fill exactly one viewport on desktop: the webcam takes whatever height is left,
+   and the announcer + Presage panel shrink with viewport height instead of pushing the page into a scroll.
+   Blitz shares the ladder rather than repeating it -- it reuses .round__main, .webcam and .snitch. */
+.page--round, .page--blitz { padding: 24px; }
 @media (min-width: 900px) {
-  .page--round { height: 100vh; height: 100dvh; min-height: 0; padding: clamp(12px, 2.4vh, 24px) 24px; justify-content: flex-start; }
-  .page--round > .page__inner { flex: 1; min-height: 0; }
-  .page--round .round__main { flex: 1; min-height: 0; flex-wrap: nowrap; }
-  .page--round .webcam { min-height: 0; }
-  .page--round .snitch { min-height: 0; overflow-y: auto; gap: clamp(6px, 1.4vh, 14px); padding: clamp(14px, 2.2vh, 22px); }
-  .page--round .snitch__reads { gap: clamp(8px, 1.2vh, 12px); }
-  .page--round .metric { padding: clamp(4px, 1.1vh, 12px) 12px; }
-  .page--round .snitch__head h2 { font-size: clamp(21px, 3.4vh, 26px); }
-  .page--round .metric__value { font-size: clamp(22px, 3.6vh, 34px); }
-  .page--round .aura-box { padding: clamp(6px, 1.2vh, 14px); }
-  .page--round .aura-box > div:last-child { font-size: clamp(28px, 4.2vh, 40px); }
-  .page--round .proto-link { padding: clamp(8px, 1.2vh, 12px); }
-  .page--round .announcer { padding: clamp(10px, 1.8vh, 20px) 24px; flex-wrap: nowrap; }
-  .page--round .announcer__face { width: clamp(56px, 9vh, 96px); height: clamp(56px, 9vh, 96px); }
-  .page--round .announcer__mid { flex-basis: 0; }
-  .page--round .announcer__prompt { font-size: clamp(22px, min(3.4vw, 4.2vh), 40px); }
-  .page--round .countdown { width: clamp(88px, 13vh, 130px); height: clamp(88px, 13vh, 130px); }
-  .page--round .countdown:not(.countdown--done) .countdown__num { font-size: clamp(46px, 7.5vh, 76px); }
-  .page--round .countdown--done .countdown__num { font-size: clamp(16px, 2.1vh, 19px); max-width: 80%; }
+  :is(.page--round, .page--blitz) { height: 100vh; height: 100dvh; min-height: 0; padding: clamp(12px, 2.4vh, 24px) 24px; justify-content: flex-start; }
+  :is(.page--round, .page--blitz) > .page__inner { flex: 1; min-height: 0; }
+  :is(.page--round, .page--blitz) .round__main { flex: 1; min-height: 0; flex-wrap: nowrap; }
+  :is(.page--round, .page--blitz) .webcam { min-height: 0; }
+  :is(.page--round, .page--blitz) .snitch { min-height: 0; overflow-y: auto; gap: clamp(6px, 1.4vh, 14px); padding: clamp(14px, 2.2vh, 22px); }
+  :is(.page--round, .page--blitz) .snitch__reads { gap: clamp(8px, 1.2vh, 12px); }
+  :is(.page--round, .page--blitz) .metric { padding: clamp(4px, 1.1vh, 12px) 12px; }
+  :is(.page--round, .page--blitz) .snitch__head h2 { font-size: clamp(21px, 3.4vh, 26px); }
+  :is(.page--round, .page--blitz) .metric__value { font-size: clamp(22px, 3.6vh, 34px); }
+  :is(.page--round, .page--blitz) .aura-box { padding: clamp(6px, 1.2vh, 14px); }
+  :is(.page--round, .page--blitz) .aura-box > div:last-child { font-size: clamp(28px, 4.2vh, 40px); }
+  :is(.page--round, .page--blitz) .proto-link { padding: clamp(8px, 1.2vh, 12px); }
+  :is(.page--round, .page--blitz) .announcer { padding: clamp(10px, 1.8vh, 20px) 24px; flex-wrap: nowrap; }
+  :is(.page--round, .page--blitz) .announcer__face { width: clamp(56px, 9vh, 96px); height: clamp(56px, 9vh, 96px); }
+  :is(.page--round, .page--blitz) .announcer__mid { flex-basis: 0; }
+  :is(.page--round, .page--blitz) .announcer__prompt { font-size: clamp(22px, min(3.4vw, 4.2vh), 40px); }
+  :is(.page--round, .page--blitz) .countdown { width: clamp(88px, 13vh, 130px); height: clamp(88px, 13vh, 130px); }
+  :is(.page--round, .page--blitz) .countdown:not(.countdown--done) .countdown__num { font-size: clamp(46px, 7.5vh, 76px); }
+  :is(.page--round, .page--blitz) .countdown--done .countdown__num { font-size: clamp(16px, 2.1vh, 19px); max-width: 80%; }
+}
+
+
+/* Blitz: the skip control sits under the prompt, and the live board replaces the single
+   aura box when the host left the leaderboard on. */
+.blitz__skip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.blitz__board { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.blitz__row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--white); border: var(--border-thin); border-radius: var(--r-sm);
+  padding: 6px 10px; font-weight: 600;
+}
+.blitz__row--me { background: var(--tint-pink); box-shadow: var(--shadow-sm); }
+.blitz__rank { font-family: var(--font-display); font-size: 20px; min-width: 22px; }
+.blitz__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blitz__faces { font-size: 13px; font-weight: 700; opacity: .7; flex: 0 0 auto; }
+.blitz__count { font-family: var(--font-display); font-size: 24px; flex: 0 0 auto; }
+
+@media (min-width: 900px) {
+  .page--blitz .blitz__board { gap: clamp(4px, .9vh, 8px); }
+  .page--blitz .blitz__row { padding: clamp(3px, .8vh, 6px) 10px; }
+  .page--blitz .blitz__count { font-size: clamp(18px, 2.8vh, 24px); }
 }
 
 /* ---------- responsive ---------- */
@@ -483,7 +506,7 @@ button, input { font-family: inherit; color: var(--ink); }
   .peek--right .peek__pop { right: 0; }
   .peek__pop::before { display: none; }
   .tilt { transform: rotate(clamp(-1deg, var(--tilt, 0deg), 1deg)) !important; }
-  .action-card, .victims, .results, .modal.deepscan, .snitch, .page--round .announcer, .code-card, .join__card { padding: 20px; }
+  .action-card, .victims, .results, .modal.deepscan, .snitch, :is(.page--round, .page--blitz) .announcer, .code-card, .join__card { padding: 20px; }
 }
 
 @media (max-width: 420px) {

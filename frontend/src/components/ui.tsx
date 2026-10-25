@@ -256,9 +256,25 @@ export function MeterBar({
   );
 }
 
-export function Countdown({ seconds }: { seconds: number }) {
+export function Countdown({
+  seconds,
+  label = "FACE NOW",
+  doneText = "captured!",
+  doneLabel = "nice.",
+  hotFrom = 5,
+}: {
+  seconds: number;
+  /** Under the number while the clock runs. */
+  label?: string;
+  /** Replaces the number at zero. Blitz says "too slow" -- a lapsed face is a miss. */
+  doneText?: string;
+  /** Replaces `label` at zero. */
+  doneLabel?: string;
+  /** When the dial starts shaking. */
+  hotFrom?: number;
+}) {
   const done = seconds <= 0;
-  const hot = !done && seconds <= 5;
+  const hot = !done && seconds <= hotFrom;
   return (
     <>
       {/* The last five seconds remount the dial every tick, so it shakes on each one. */}
@@ -274,9 +290,9 @@ export function Countdown({ seconds }: { seconds: number }) {
       >
         {/* Keyed by the second, so every tick replays its pop. */}
         <span className="countdown__num" key={done ? "done" : seconds}>
-          {done ? "captured!" : seconds}
+          {done ? doneText : seconds}
         </span>
-        <span className="countdown__label">{done ? "nice." : "FACE NOW"}</span>
+        <span className="countdown__label">{done ? doneLabel : label}</span>
       </div>
       <span className="sr-only" aria-live="assertive">
         {seconds === 0 ? "FACE NOW" : ""}

@@ -19,7 +19,17 @@ from app.processing.presage import (
     PresageProcessor,
     judge,
 )
-from tests.conftest import TINY_JPEG, create_room, frame_files, make_client, state_of, wait_for
+from tests.conftest import (
+    TINY_JPEG,
+    blitz_client,
+    create_room,
+    frame_files,
+    make_client,
+    run_of,
+    start_blitz,
+    state_of,
+    wait_for,
+)
 
 TOKEN = "test-presage-token"
 
@@ -49,8 +59,9 @@ def ctx(target: str, room_id="r", player_id="p") -> RoundCtx:
     return RoundCtx(room_id=room_id, player_id=player_id, round_no=1, prompt="", target=target)
 
 
-def scores_for(top: str) -> dict[str, float]:
-    return {name: (0.9 if name == top else 0.0125) for name in PRESAGE_EXPRESSIONS}
+def scores_for(top: str, value: float = 0.9) -> dict[str, float]:
+    """One expression on top. `value` is the SDK's 0-100 scale, so 90.0 -> confidence 0.9."""
+    return {name: (value if name == top else 0.0125) for name in PRESAGE_EXPRESSIONS}
 
 
 def test_presage_is_selectable():
@@ -201,3 +212,82 @@ def judge_label(top: str, target: str) -> str:
     board = ExpressionBoard()
     board.put("r", "p", scores_for(top), stable=True)
     return judge(board.latest("r", "p"), target)[0]
+
+# --- blitz ----------------------------------------------------------------
+#
+# The reading path is what makes blitz feel fast: a face counts the instant Presage sees
+# it, instead of waiting out a CAPTURE_INTERVAL_MS upload tick per face.
+
+
+@pytest.fixture
+def presage_blitz(tmp_path):
+    with blitz_client(
+        tmp_path,
+        processor="presage",
+        presage_ingest_token=TOKEN,
+        blitz_face_seconds=60,
+    ) as c:
+        yield c
+
+
+def test_a_reading_passes_the_player_s_own_face_in_blitz(presage_blitz):
+    host = create_room(presage_blitz)
+    room_id, player_id = host["room_id"], host["player_id"]
+    state = start_blitz(presage_blitz, room_id, host)
+    target = run_of(state, host)["target"]
+    top = next(name for name in PRESAGE_EXPRESSIONS if judge_label(name, target) == target)
+
+    res = push(presage_blitz, room_id, player_id, scores_for(top, 90.0))
+    assert res.status_code == 202, res.text
+    assert res.json()["scored"] is True
+
+    state = wait_for(presage_blitz, room_id, lambda s: run_of(s, host)["passed"] == 1)
+    run = run_of(state, host)
+    assert run["face_no"] == 2, "a hit advances the cursor"
+    assert run["last_points"] == 190, "100 flat plus round(0.9 * 100)"
+    assert state["players"][player_id]["points"] == 190
+
+
+def test_a_sub_threshold_reading_does_not_spend_the_rate_limit(presage_blitz):
+    """A read that cannot pass must not consume the player's min_frame_interval_ms slot.
+
+    Without the pre-check in `_score_if_hit` it would submit, fail, and leave the player
+    unable to send a real frame for another interval -- which in blitz costs them faces.
+    """
+    host = create_room(presage_blitz)
+    room_id, player_id = host["room_id"], host["player_id"]
+    engine = presage_blitz.app.state.engine
+    room = engine.require_room(room_id)
+    room.state.config = room.state.config.model_copy(update={"blitz_pass_confidence": 0.8})
+
+    state = start_blitz(presage_blitz, room_id, host)
+    target = run_of(state, host)["target"]
+    top = next(name for name in PRESAGE_EXPRESSIONS if judge_label(name, target) == target)
+
+    res = push(presage_blitz, room_id, player_id, scores_for(top, 30.0))
+    assert res.json()["scored"] is False
+    state = state_of(presage_blitz, room_id)
+    run = run_of(state, host)
+    assert run["passed"] == 0
+    assert run["face_no"] == 1
+    assert run["submission"] is None, "no submission should have been registered at all"
+
+
+def test_a_reading_for_a_face_the_player_left_pays_nothing(presage_blitz):
+    """Skipping mid-flight must not pay for the face that was abandoned."""
+    host = create_room(presage_blitz)
+    room_id, player_id = host["room_id"], host["player_id"]
+    state = start_blitz(presage_blitz, room_id, host)
+    first = run_of(state, host)["target"]
+
+    res = presage_blitz.post(f"/api/rooms/{room_id}/skip", params={"player_id": player_id})
+    assert res.status_code == 200, res.text
+
+    # A reading matching the *abandoned* face. It must not score, unless the next face
+    # happens to want the same thing -- which build_sequence guarantees it does not.
+    assert run_of(state_of(presage_blitz, room_id), host)["target"] != first
+    top = next(name for name in PRESAGE_EXPRESSIONS if judge_label(name, first) == first)
+    res = push(presage_blitz, room_id, player_id, scores_for(top, 95.0))
+    assert res.json()["scored"] is False
+    assert state_of(presage_blitz, room_id)["players"][player_id]["points"] == 0
+

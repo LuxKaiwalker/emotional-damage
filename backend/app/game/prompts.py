@@ -54,3 +54,32 @@ def pick_prompt(round_no: int, exclude: set[str] | None = None) -> Prompt:
 def grab_all_prompts() -> list[Prompt]:
     """Return a list of all prompts."""
     return list(PROMPTS)
+
+def build_sequence(length: int, rng: random.Random | None = None) -> list[Prompt]:
+    """The fixed order every player in a blitz walks, built once at game start.
+
+    Drawn from repeatedly shuffled copies of the whole table, so no prompt is asked twice
+    until all of them have been -- and player 7's twelfth face is player 1's twelfth face,
+    which is the only thing making an asynchronous race fair.
+
+    One invariant beyond variety: **no two consecutive entries share a `target`**. A
+    Presage reading stays valid for PRESAGE_MAX_AGE_MS after it lands, and passing a face
+    advances the cursor immediately, so a neighbouring repeat would let the same held
+    expression pass the next face for free. `rng` is for the tests; production uses the
+    module-level `random`.
+    """
+    picker = rng or random
+    pool: list[Prompt] = []
+    sequence: list[Prompt] = []
+    while len(sequence) < length:
+        previous = sequence[-1].target if sequence else None
+        index = next((i for i, p in enumerate(pool) if p.target != previous), None)
+        if index is None:
+            # Empty, or everything left repeats the last target. Refill and let the
+            # leftovers wait their turn: a fresh block always holds another target.
+            block = list(PROMPTS)
+            picker.shuffle(block)
+            pool.extend(block)
+            continue
+        sequence.append(pool.pop(index))
+    return sequence
