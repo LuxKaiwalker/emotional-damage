@@ -122,7 +122,7 @@ export function Home() {
               DAMAGE
             </h1>
             <p className="home__tagline">
-              An AI yells a prompt. You have 3 seconds to pull the face. Your
+              An AI yells a prompt. You have limited time to pull the face. Your
               webcam snitches on your vitals. Most aura wins.
             </p>
             <HighScoreBadge />
