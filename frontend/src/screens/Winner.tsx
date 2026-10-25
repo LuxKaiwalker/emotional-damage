@@ -1,6 +1,8 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import { api } from "../api/client";
+import { useMusic, useOnChange } from "../audio/hooks";
+import { sfx } from "../audio/sfx";
 import { useFollowServerPhase, useGame } from "../game";
 import { Confetti, Crown } from "../components/art";
 import { DeepScanSummary } from "../components/DeepScanSummary";
@@ -16,8 +18,15 @@ export function Winner() {
   const [scanOpen, setScanOpen] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useOnChange(error, (now) => now && sfx.error());
 
   const champion = standings[0];
+
+  const iWon = !!champion?.isMe;
+  useMusic(iWon ? "victory" : "gameover", { intensity: 0.8 });
+  useEffect(() => {
+    if (iWon) sfx.fanfare();
+  }, [iWon]);
   const others = standings.slice(1);
   const lastRank = others[others.length - 1]?.rank;
   const totalRounds = state?.config.rounds_per_game ?? 0;

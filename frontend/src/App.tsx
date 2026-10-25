@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { GameShell } from "./components/GameShell";
+import { SoundLayer } from "./components/SoundLayer";
 import { Home } from "./screens/Home";
 import { Join } from "./screens/Join";
 import { Leaderboard } from "./screens/Leaderboard";
@@ -10,6 +11,8 @@ import { Winner } from "./screens/Winner";
 
 export default function App() {
   return (
+    <>
+    <SoundLayer />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/join" element={<Join />} />
@@ -22,5 +25,6 @@ export default function App() {
       <Route path="/play/:code/winner" element={<Winner />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

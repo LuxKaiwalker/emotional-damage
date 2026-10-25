@@ -8,6 +8,8 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import { useMusic, useOnChange } from "../audio/hooks";
+import { sfx } from "../audio/sfx";
 import { ChunkyButton, Header, PageShell, Sticker } from "../components/ui";
 import { getClientId, saveSession } from "../session";
 import askForCameraPermission from "../hooks/useCameraPermission";
@@ -17,6 +19,7 @@ const NAME_MAX = 32;
 const clean = (s: string) => s.toUpperCase().replace(/[^A-Z]/g, "");
 
 export function Join() {
+  useMusic("menu");
   const navigate = useNavigate();
   const [q] = useSearchParams();
   const initial = clean(q.get("code") ?? "").slice(0, LEN);
@@ -26,6 +29,7 @@ export function Join() {
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useOnChange(error, (now) => now && sfx.error());
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
   const code = cells.join("");

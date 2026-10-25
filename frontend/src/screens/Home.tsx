@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
+import { useMusic, useOnChange } from "../audio/hooks";
+import { sfx } from "../audio/sfx";
 import { CringeFace, Mascot, ScreamFace, ShockFace } from "../components/art";
 import {
   ChunkyButton,
@@ -72,12 +74,14 @@ function HighScoreBadge() {
 }
 
 export function Home() {
+  useMusic("menu");
   const navigate = useNavigate();
   const [howOpen, setHowOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useOnChange(error, (now) => now && sfx.error());
 
   const create = async () => {
     const trimmed = name.trim();

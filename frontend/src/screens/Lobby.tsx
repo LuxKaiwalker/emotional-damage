@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
+import { useMusic, useOnChange } from "../audio/hooks";
+import { sfx } from "../audio/sfx";
 import { useFollowServerPhase, useGame } from "../game";
 import {
   Avatar,
@@ -83,11 +85,17 @@ export function Lobby() {
   useFollowServerPhase(game);
 
   const { code, state, session, isHost, roster, connected } = game;
+
+  // The lobby music fills out as the room does: a lone host gets a sparse groove, a
+  // full room the whole band.
+  useMusic("lobby", { intensity: Math.min(0.9, 0.2 + 0.15 * roster.length) });
+  useOnChange(roster.length, (now, before) => (now > before ? sfx.join() : sfx.leave()));
   const [copied, setCopied] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingTiming, setSavingTiming] = useState(false);
   const [timingError, setTimingError] = useState<string | null>(null);
+  useOnChange(error ?? timingError, (now) => now && sfx.error());
 
   useEffect(() => {
     if (!copied) return;
