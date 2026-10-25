@@ -164,6 +164,31 @@ button, input { font-family: inherit; color: var(--ink); }
 .face--sm { width: min(96px, 10vh); height: min(96px, 10vh); }
 .home__faces--left .face--sm { transform: rotate(14deg); margin-left: 70px; }
 .home__faces--right .face--sm { transform: rotate(-12deg); margin-right: 90px; }
+/* Hover a hero face for its reaction GIF. The popup opens toward the title, not off the page. */
+.peek { position: relative; display: block; cursor: pointer; border-radius: 50%; outline: none; }
+.peek:focus-visible .face { filter: drop-shadow(0 0 0 var(--ink)) drop-shadow(4px 4px 0 var(--white)); }
+.peek .face { transition: scale var(--dur-med) var(--ease-snappy); }
+.peek[aria-expanded="true"] .face { scale: 1.08; }
+.peek__pop {
+  position: absolute; z-index: 20; top: 50%; width: 220px; translate: 0 -50%;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: var(--white); border: var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md);
+  padding: 10px 10px 12px; pointer-events: none;
+}
+.peek--left .peek__pop  { left: calc(100% + 14px); rotate: 3deg; }
+.peek--right .peek__pop { right: calc(100% + 14px); rotate: -3deg; }
+/* the speech-bubble tail, pointing back at the face */
+.peek__pop::before {
+  content: ""; position: absolute; top: 50%; width: 18px; height: 18px; translate: 0 -50%; rotate: 45deg;
+  background: var(--white); border: var(--border);
+}
+.peek--left .peek__pop::before  { left: -12px; border-top-color: transparent; border-right-color: transparent; }
+.peek--right .peek__pop::before { right: -12px; border-bottom-color: transparent; border-left-color: transparent; }
+.peek__gif { position: relative; display: block; width: 100%; height: auto; max-height: 200px; object-fit: cover; border: var(--border-thin); border-radius: var(--r-sm); background: var(--tint-yellow); min-height: 120px; }
+.peek__label {
+  position: relative; font-family: var(--font-display); font-size: 22px; line-height: 1; text-transform: uppercase;
+  background: var(--yellow); border: var(--border-thin); border-radius: var(--r-pill); padding: 4px 14px; rotate: -2deg;
+}
 .home__actions { display: flex; flex-wrap: wrap; gap: 28px; padding-bottom: 10px; }
 .high-score {
   display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; max-width: 100%;
@@ -452,6 +477,11 @@ button, input { font-family: inherit; color: var(--ink); }
   .face--xl, .face--lg { width: 80px; height: 80px; }
   .face--sm { width: 52px; height: 52px; }
   .home__faces--left .face--sm, .home__faces--right .face--sm { margin: 0; }
+  /* The faces sit in rows here, so the popup opens above them instead of beside. */
+  .peek .peek__pop { top: auto; bottom: calc(100% + 14px); translate: 0 0; width: 170px; }
+  .peek--left .peek__pop { left: 0; }
+  .peek--right .peek__pop { right: 0; }
+  .peek__pop::before { display: none; }
   .tilt { transform: rotate(clamp(-1deg, var(--tilt, 0deg), 1deg)) !important; }
   .action-card, .victims, .results, .modal.deepscan, .snitch, .page--round .announcer, .code-card, .join__card { padding: 20px; }
 }

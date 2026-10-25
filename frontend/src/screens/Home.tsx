@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useMusic, useOnChange } from "../audio/hooks";
 import { sfx } from "../audio/sfx";
 import { CringeFace, Mascot, ScreamFace, ShockFace } from "../components/art";
+import { FacePeek } from "../components/FacePeek";
 import {
   ChunkyButton,
   ChunkyCard,
@@ -33,6 +34,18 @@ const steps = [
     body: "Presage reads your vitals, we score the damage. Leaderboard after every round.",
   },
 ];
+
+/**
+ * What each hero face pops up on hover. Giphy's 200px-tall rendition of each GIF: the
+ * originals run up to 8 MB, far more than a popup this size needs.
+ */
+const GIF = (path: string) => `https://${path}/200.gif`;
+const PEEKS = {
+  shocked: GIF("media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExeXB0bjdmMnZnNGc0d2t1ODJrYmNtZjM4MGI1bmk2djl2cWJtYTdxaiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/lxxOGaDRk4f7R5TkBd"),
+  sad: GIF("media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExeGpkeTE2ejF5cjJ5cTVjdGNnZjdzbWhnNHgyNGdmamZkampwcGltdSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/kWTLDxwtTILxIObpop"),
+  confused: GIF("media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExb2ZwNTQ5NmI1M3UxNGZ5ZXFhbW1jbnl6emF2dWtydXNobG1jcWZwNSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/IPfYRZbf01E2yHfhRd"),
+  happy: GIF("media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExam5lb2c0ZGoyeWIzNGJvbmIwNXRsNjZpOW1yOGljc2Q0dTd3bG00eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/fkAj7cN0OEuHXOXFoQ"),
+};
 
 /** The backend requires a name of 1-32 chars on both create and join. */
 export const NAME_MAX = 32;
@@ -116,8 +129,12 @@ export function Home() {
       <div className="home__main">
         <section className="home__hero">
           <div className="home__faces home__faces--left">
-            <ShockFace className="face face--lg" />
-            <CringeFace className="face face--sm" />
+            <FacePeek gif={PEEKS.shocked} label="shook" side="left">
+              <ShockFace className="face face--lg" />
+            </FacePeek>
+            <FacePeek gif={PEEKS.confused} label="confused" side="left">
+              <CringeFace className="face face--sm" />
+            </FacePeek>
           </div>
           <div className="home__hero-copy">
             <h1 className="title-outline" style={{ letterSpacing: 1 }}>
@@ -132,8 +149,12 @@ export function Home() {
             <HighScoreBadge />
           </div>
           <div className="home__faces home__faces--right">
-            <Mascot className="face face--xl" />
-            <ScreamFace className="face face--sm" />
+            <FacePeek gif={PEEKS.sad} label="sad" side="right">
+              <Mascot className="face face--xl" />
+            </FacePeek>
+            <FacePeek gif={PEEKS.happy} label="happy" side="right">
+              <ScreamFace className="face face--sm" />
+            </FacePeek>
           </div>
         </section>
 
