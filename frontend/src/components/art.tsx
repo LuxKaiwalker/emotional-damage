@@ -109,11 +109,14 @@ const STAR = "M30 2l8 18 20 2-15 13 5 20-18-11-18 11 5-20-15-13 20-2z";
 /* No width/height here on purpose: the wrapper is sized in CSS so the scraps can grow
    with the viewport the way the old stretched SVG did, without the distortion. */
 function Scrap({ kind, fill, tilt = 0 }: Omit<Scrap, "left" | "top">) {
-  const spin = tilt ? `rotate(${tilt} 16 10)` : undefined;
+  const spin = tilt ? `rotate(${tilt} 17 16)` : undefined;
   if (kind === "tag") {
+    // 34x32 for a 26x14 rect because it is rotated: at 40deg its bounding box is about
+    // 32x30, and an SVG clips whatever leaves its viewBox. A snug 32x20 box sliced the
+    // corners off every tilted tag -- which is only invisible until you look at one.
     return (
-      <svg viewBox="0 0 32 20" aria-hidden="true">
-        <rect x="3" y="3" width="26" height="14" rx="3" fill={fill} stroke="#111" strokeWidth="3" transform={spin} />
+      <svg viewBox="0 0 34 32" aria-hidden="true">
+        <rect x="4" y="9" width="26" height="14" rx="3" fill={fill} stroke="#111" strokeWidth="3" transform={spin} />
       </svg>
     );
   }

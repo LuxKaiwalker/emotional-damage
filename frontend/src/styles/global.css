@@ -437,7 +437,7 @@ button, input { font-family: inherit; color: var(--ink); }
    readable on a phone. Height follows from each viewBox, so nothing is distorted. */
 .confetti__bit { position: absolute; display: block; line-height: 0; }
 .confetti__bit svg { display: block; width: 100%; height: auto; }
-.confetti__bit--tag { width: clamp(26px, 2.6vw, 38px); }
+.confetti__bit--tag { width: clamp(28px, 2.8vw, 40px); }
 .confetti__bit--dot { width: clamp(20px, 2vw, 29px); }
 .confetti__bit--star { width: clamp(30px, 4.7vw, 68px); }
 .winner__inner { position: relative; align-items: center; text-align: center; }
