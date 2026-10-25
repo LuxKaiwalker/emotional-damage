@@ -8,8 +8,13 @@ from app.capture.media import MediaStore
 from app.capture.queue import FrameQueue
 from app.config import Settings
 from app.game.engine import GameEngine
+from app.game.highscores import HighScoreStore
 from app.game.store import InMemoryRoomStore
 from app.game.voice import VoiceStore
+
+
+def get_highscores(request: Request) -> HighScoreStore:
+    return request.app.state.highscores
 
 
 def get_engine(request: Request) -> GameEngine:
@@ -42,3 +47,4 @@ MediaDep = Annotated[MediaStore, Depends(get_media)]
 SettingsDep = Annotated[Settings, Depends(get_config)]
 RoomStoreDep = Annotated[InMemoryRoomStore, Depends(get_store)]
 VoiceStoreDep = Annotated[VoiceStore, Depends(get_voice_store)]
+HighScoresDep = Annotated[HighScoreStore, Depends(get_highscores)]

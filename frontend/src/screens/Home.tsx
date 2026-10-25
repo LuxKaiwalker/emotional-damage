@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import { CringeFace, Mascot, ScreamFace, ShockFace } from "../components/art";
 import { ChunkyButton, ChunkyCard, Modal, PageShell, Pill } from "../components/ui";
-import { saveSession } from "../session";
+import { getClientId, saveSession } from "../session";
+import type { HighScore } from "../types";
 
 const steps = [
   { color: "var(--pink)", title: "Uncle Damage speaks.", body: "Our voice agent yells a cursed prompt at the whole lobby." },
@@ -14,6 +15,42 @@ const steps = [
 
 /** The backend requires a name of 1-32 chars on both create and join. */
 export const NAME_MAX = 32;
+
+/** This browser's best final score, as the server recorded it. Hidden when the server can't say. */
+function HighScoreBadge() {
+  const [score, setScore] = useState<HighScore | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getHighScore(getClientId())
+      .then((s) => !cancelled && setScore(s))
+      .catch(() => {
+        /* server unreachable: no badge beats a broken one, and creating a lobby will say why */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!score) return null;
+  const games = score.games_played;
+  return (
+    <div className="high-score" role="status">
+      <span className="high-score__label">your high score</span>
+      {score.best === null ? (
+        <span className="high-score__sub">none yet. finish a game to set one.</span>
+      ) : (
+        <>
+          <span className="high-score__num">{score.best.toLocaleString()}</span>
+          <span className="high-score__sub">
+            aura as {score.best_name} · best of {games} game{games === 1 ? "" : "s"}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function Home() {
   const navigate = useNavigate();
@@ -30,7 +67,7 @@ export function Home() {
     setError(null);
     try {
       // The room and this player's seat are minted together; persist the seat before leaving.
-      const sess = await api.createRoom(trimmed);
+      const sess = await api.createRoom(trimmed, getClientId());
       saveSession(sess, trimmed);
       navigate(`/lobby/${sess.join_code.toUpperCase()}`);
     } catch (err) {
@@ -69,6 +106,7 @@ export function Home() {
               An AI yells a prompt. You have 3 seconds to pull the face. Your webcam snitches on your vitals. Most aura
               wins.
             </p>
+            <HighScoreBadge />
           </div>
           <div className="home__faces home__faces--right">
             <Mascot className="face face--xl" />

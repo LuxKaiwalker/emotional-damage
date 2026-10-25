@@ -2,6 +2,7 @@ import type {
   FrameUploadResult,
   GameConfig,
   GameState,
+  HighScore,
   LeaveRoomResponse,
   PlayerSession,
   VitalsAccepted,
@@ -110,11 +111,20 @@ const json = (body: unknown): RequestInit => ({
 });
 
 export const api = {
-  createRoom: (name: string) => request<PlayerSession>("/rooms", json({ name })),
+  /** `clientId` is this browser's id (session.ts), so the game counts toward its high score. */
+  createRoom: (name: string, clientId: string) =>
+    request<PlayerSession>("/rooms", json({ name, client_id: clientId })),
 
   /** `roomOrCode` takes either a full room id or the 4-character join code. */
-  joinRoom: (roomOrCode: string, name: string) =>
-    request<PlayerSession>(`/rooms/${encodeURIComponent(roomOrCode)}/join`, json({ name })),
+  joinRoom: (roomOrCode: string, name: string, clientId: string) =>
+    request<PlayerSession>(
+      `/rooms/${encodeURIComponent(roomOrCode)}/join`,
+      json({ name, client_id: clientId }),
+    ),
+
+  /** This browser's best final score. The server records it at game over; clients only read. */
+  getHighScore: (clientId: string) =>
+    request<HighScore>(`/highscores/${encodeURIComponent(clientId)}`),
 
   getState: (roomId: string) => request<GameState>(`/rooms/${encodeURIComponent(roomId)}`),
 

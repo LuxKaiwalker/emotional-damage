@@ -70,3 +70,30 @@ export function clearSession(): void {
     /* nothing to clear */
   }
 }
+
+const CLIENT_KEY = "ed.client";
+let pageClientId: string | null = null;
+
+/**
+ * This browser's long-lived id, sent with every create/join so the server can keep its high
+ * score across games. Unlike the session it is never cleared. With storage blocked it lasts
+ * for this page only, which just means those games do not add up.
+ */
+export function getClientId(): string {
+  try {
+    const stored = localStorage.getItem(CLIENT_KEY);
+    if (stored && /^[A-Za-z0-9_-]{8,64}$/.test(stored)) return stored;
+  } catch {
+    /* storage blocked: fall through to a per-page id */
+  }
+  if (!pageClientId) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    pageClientId = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  try {
+    localStorage.setItem(CLIENT_KEY, pageClientId);
+  } catch {
+    /* keep the per-page id */
+  }
+  return pageClientId;
+}

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { ChunkyButton, Header, PageShell, Sticker } from "../components/ui";
-import { saveSession } from "../session";
+import { getClientId, saveSession } from "../session";
 
 const LEN = 4;
 const NAME_MAX = 32;
@@ -61,7 +61,7 @@ export function Join() {
     setError(null);
     try {
       // The join code is enough: the server resolves it to a room and mints this player's seat.
-      const sess = await api.joinRoom(code, name);
+      const sess = await api.joinRoom(code, name, getClientId());
       saveSession(sess, name);
       navigate(`/lobby/${sess.join_code.toUpperCase()}`);
     } catch (err) {

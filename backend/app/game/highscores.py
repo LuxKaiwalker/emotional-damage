@@ -1,0 +1,73 @@
+"""Each browser's best final score, kept across games, rooms and server restarts.
+
+There are no accounts: a player is a seat in one room. What ties games together is the
+`client_id` the browser mints once and sends with every create/join. Scores are written
+by the server at game over, never by a client, so nobody can post themselves a high score.
+
+One JSON file is plenty for this: a write happens once per player per game. To run more
+than one backend process, move this next to the room store (Redis, a table) -- see store.py.
+"""
+
+import asyncio
+import json
+import logging
+import os
+from pathlib import Path
+
+from pydantic import BaseModel, ValidationError
+
+from app.models import HighScore, utcnow
+
+log = logging.getLogger(__name__)
+
+
+class _File(BaseModel):
+    scores: dict[str, HighScore] = {}
+
+
+class HighScoreStore:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._lock = asyncio.Lock()
+        self._scores = self._load()
+
+    def _load(self) -> dict[str, HighScore]:
+        try:
+            return _File.model_validate_json(self.path.read_bytes()).scores
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValidationError):
+            # A corrupt file must not take the game server down with it; start over, loudly.
+            log.exception("could not read high scores from %s; starting empty", self.path)
+            return {}
+
+    def get(self, client_id: str) -> HighScore | None:
+        return self._scores.get(client_id)
+
+    async def record(self, finals: list[tuple[str, str, int]]) -> None:
+        """Count one finished game for each `(client_id, name, points)`, keeping the best."""
+        if not finals:
+            return
+        async with self._lock:
+            now = utcnow()
+            for client_id, name, points in finals:
+                prev = self._scores.get(client_id)
+                if prev is None:
+                    self._scores[client_id] = HighScore(
+                        best=points, best_name=name, best_at=now, games_played=1
+                    )
+                elif points > prev.best:
+                    self._scores[client_id] = HighScore(
+                        best=points, best_name=name, best_at=now, games_played=prev.games_played + 1
+                    )
+                else:
+                    prev.games_played += 1
+            payload = _File(scores=self._scores).model_dump_json()
+            await asyncio.to_thread(self._write, payload)
+
+    def _write(self, payload: str) -> None:
+        # Write-then-rename, so a crash mid-write leaves the previous file intact.
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(payload)
+        os.replace(tmp, self.path)
