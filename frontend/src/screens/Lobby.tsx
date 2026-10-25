@@ -360,9 +360,9 @@ export function Lobby() {
                     }
                   />
                   <div className="rules__row">
-                    <span>Skip cooldown</span>
+                    <span>Skip unlocks after</span>
                     <span className="sticker rules__vibe">
-                      {config ? `${config.blitz_skip_cooldown_seconds}s` : "…"}
+                      {config ? `${config.blitz_skip_after_seconds}s` : "…"}
                     </span>
                   </div>
                   <div className="rules__row">

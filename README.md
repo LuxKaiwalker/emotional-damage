@@ -63,14 +63,19 @@ selected mode's rows.
 | Progress | Room-global `state.round` | Per player: `state.blitz.runs[player_id]` |
 | Pace | Everyone waits for the round to end | Each player advances the moment they pass |
 | Points | speed + accuracy + placement, committed at the round end | `100` flat + accuracy, committed on the spot |
-| Stuck on a face | Nothing you can do; the round is lost | Skip it (free, on a cooldown) |
+| Stuck on a face | Nothing you can do; the round is lost | Skip it, once you have given it a few seconds |
 | Driver | `GameEngine._run_game` | `GameEngine._run_blitz` |
 
 **Blitzkrieg** is the fast, competitive one: whoever lands more faces inside the clock
 wins, so volume is the axis rather than being first. Everyone walks **the same sequence
 of faces in the same order** — that is what keeps an asynchronous race fair — but each
 player has their own cursor into it. A face the player cannot land rolls over on its own
-after `BLITZ_FACE_SECONDS`, or they can skip it early.
+after `BLITZ_FACE_SECONDS`, or they can skip it early -- but not instantly: a face has to
+have been on screen for `BLITZ_SKIP_AFTER_SECONDS` first. That wait is **per face, not per
+skip**, so it is re-armed every time a new one comes up, whether the last was passed,
+skipped or run out. A cooldown measured from the last skip would let a player hammer
+through the sequence hunting for an easy face; this makes them spend the same few seconds
+on every one.
 
 Two things about that sequence are deliberate and worth not undoing:
 
@@ -140,6 +145,16 @@ Two deadlines, and the game's always wins:
 
 Both are absolute timestamps, anchored the same way client-side, so a long round and a long
 game count down off the same measured clock offset.
+
+### High scores: one number, one kind of game
+
+`GET /api/highscores/{client_id}` is what the landing page badge reads, and it means **the
+best five-round classic game this browser has finished** -- the badge says so. Every other
+shape of game is filed under its own key (`:classic10`, `:blitz`), because they are not
+worth comparable numbers: ten rounds is worth twice five, and a blitz runs to a few
+thousand. Share one key and the longest game a browser ever played buries the score it set
+at the game the badge is actually talking about. Five-round classic keeps the bare
+`client_id`, so scores recorded before the split still mean what they meant.
 
 ### Rooms: codes, restarts, and destruction
 
@@ -213,7 +228,7 @@ uploaded frame.
 | `POST` | `/api/rooms/{id}/start` | host only, `?player_id=` |
 | `POST` | `/api/rooms/{id}/mode` | host only, in the lobby, `?mode=classic\|blitz` |
 | `POST` | `/api/rooms/{id}/blitz-config` | host only, in the lobby: the blitz clock, per-face limit, pass bar |
-| `POST` | `/api/rooms/{id}/skip` | blitz only: move this player to the next face (429 inside the cooldown) |
+| `POST` | `/api/rooms/{id}/skip` | blitz only: move this player to the next face (429 until the face has been up `BLITZ_SKIP_AFTER_SECONDS`) |
 | `POST` | `/api/rooms/{id}/restart` | host only, after `game_over`: scores cleared, back to the lobby |
 | `POST` | `/api/rooms/{id}/leave` | `?player_id=` → `{room_destroyed}`; the last one out closes the room |
 | `POST` | `/api/rooms/{id}/frames` | multipart JPEG + `player_id` → `202 {submission_id}` |
@@ -238,7 +253,7 @@ rather than leaving it pending — see the scoring notes above.
 | `test_restart.py` | scores cleared, room identity kept, a second game played in the same room |
 | `test_blitz_flow.py` | blitz end to end: points per face, cursors diverging, one shared order |
 | `test_blitz_sequence.py` | `build_sequence`: length, coverage, and no repeated target in a row |
-| `test_blitz_skip.py` | skip advances and pays nothing; the cooldown, and what does not reset it |
+| `test_blitz_skip.py` | skip advances and pays nothing; the per-face wait, and that every new face re-arms it |
 | `test_blitz_timing.py` | faces lapsing on the sweep, deadlines inside the game clock, the breakdown |
 | `test_blitz_threshold.py` | the pass bar, and the proof it did not leak into classic |
 | `test_blitz_config.py` | mode and blitz settings: host-only, lobby-only, and surviving a restart |
