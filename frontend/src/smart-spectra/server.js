@@ -25,6 +25,13 @@ const STARTUP_GRACE_MS = 45000;
 const MAX_FRAMES_IN_FLIGHT = 2;
 // Respawns allowed per session within a minute before giving up on it.
 const MAX_RESPAWNS_PER_MINUTE = 3;
+// A session Presage did not authorize is started again after this backoff, doubling up
+// to the cap, for as long as the player is connected. On the VPS a refusal almost always
+// means the proxy tunnel is down or slow, and it comes back; hanging up instead cost the
+// player every round of the game. The backoff keeps a long outage from spending the one
+// core on startups that are bound to fail.
+const AUTH_RETRY_MIN_MS = 5000;
+const AUTH_RETRY_MAX_MS = 30000;
 
 if (!API_KEY) {
   throw new Error("Missing SMARTSPECTRA_API_KEY");
@@ -62,8 +69,9 @@ async function forwardExpression(roomId, playerId, reading) {
 }
 
 /**
- * Own one session process: start it, feed it, watch it, replace it if it wedges.
- * `onMessage` gets everything the process says except its heartbeat.
+ * Own one session process: start it, feed it, watch it, replace it if it wedges, and
+ * start it again later if Presage refuses it. `onMessage` gets everything the process
+ * says except its heartbeat and its refusal, plus `{ type: "retrying" }` for the latter.
  */
 function supervise(kind, onMessage, onGiveUp) {
   let child = null;
@@ -72,6 +80,8 @@ function supervise(kind, onMessage, onGiveUp) {
   let inFlight = 0;
   let respawns = [];
   let stopped = false;
+  let refusals = 0;
+  let retryTimer = null;
 
   const spawn = () => {
     inFlight = 0;
@@ -80,8 +90,16 @@ function supervise(kind, onMessage, onGiveUp) {
     child = fork(SESSION_JS, [kind], { serialization: "advanced" });
     const self = child;
     self.on("message", (msg) => {
+      // Still draining after it was refused and replaced.
+      if (self !== child) return;
       lastHeard = Date.now();
       started = true;
+      if (msg.type === "dead") {
+        retryLater(msg.message);
+        return;
+      }
+      // Readings mean Presage let this one in, so the next refusal starts a fresh backoff.
+      if (msg.type === "expression" || msg.type === "metrics") refusals = 0;
       if (msg.type !== "alive") onMessage(msg);
     });
     self.on("exit", (code, signal) => {
@@ -103,9 +121,21 @@ function supervise(kind, onMessage, onGiveUp) {
     spawn();
   };
 
+  const retryLater = (why) => {
+    if (stopped) return;
+    const refused = child;
+    child = null;
+    refused?.kill("SIGKILL");
+    const delayMs = Math.min(AUTH_RETRY_MIN_MS * 2 ** refusals, AUTH_RETRY_MAX_MS);
+    refusals++;
+    onMessage({ type: "retrying", message: why, delayMs });
+    retryTimer = setTimeout(spawn, delayMs);
+  };
+
   const watchdog = setInterval(() => {
     const limit = started ? WATCHDOG_MS : STARTUP_GRACE_MS;
-    if (!stopped && Date.now() - lastHeard > limit) {
+    // No child while waiting out a refusal: nothing to watch.
+    if (!stopped && child && Date.now() - lastHeard > limit) {
       console.error(`${kind} session unresponsive for ${limit} ms; replacing it`);
       restart();
     }
@@ -126,6 +156,7 @@ function supervise(kind, onMessage, onGiveUp) {
       if (stopped) return;
       stopped = true;
       clearInterval(watchdog);
+      clearTimeout(retryTimer);
       const last = child;
       if (last?.connected) last.send({ type: "stop" });
       // Let it stop the SDK cleanly; a wedged one never will.
@@ -176,9 +207,20 @@ wss.on("connection", (ws, req) => {
   // do not talk over each other in one caption.
   const primary = VITALS ? "vitals" : "expressions";
 
+  // Whether the expression session is reading faces, told to the browser on each change
+  // so the round screen can say why nothing scores instead of just showing "none".
+  let reading = false;
+  const reader = (state, message) => send({ type: "reader", state, message });
+
   const relay = (kind) => (msg) => {
-    if (msg.type === "dead") {
-      lost(kind, msg.message);
+    if (msg.type === "retrying") {
+      console.error(
+        `${kind} session for ${playerId ?? "?"}: ${msg.message} Retrying in ${msg.delayMs} ms`,
+      );
+      if (kind === "expressions") {
+        reading = false;
+        reader("retrying", "Can't reach Presage to read your face. Retrying...");
+      }
     } else if (msg.type === "error") {
       send({ type: "error", code: msg.code, message: msg.message, retryable: msg.retryable });
     } else if (msg.type === "status" || msg.type === "validation") {
@@ -186,6 +228,10 @@ wss.on("connection", (ws, req) => {
     } else if (msg.type === "metrics") {
       send({ type: "metrics", data: msg.metrics });
     } else if (msg.type === "expression") {
+      if (!reading) {
+        reading = true;
+        reader("reading");
+      }
       forward({ scores: msg.scores, stable: msg.stable });
     }
   };

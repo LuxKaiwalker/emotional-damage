@@ -114,10 +114,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             "vitals_enabled": settings.vitals_enabled,
             # Under PROCESSOR=presage, `players_reading` at 0 mid-game means the sidecar
-            # is not getting through, and every frame is being judged "none".
+            # is not getting through, and every frame is being judged "none". Only readings
+            # young enough to score count: the board keeps old ones for a minute.
             "presage": {
                 "ingest": bool(settings.presage_ingest_token),
-                "players_reading": len(READINGS),
+                "players_reading": READINGS.fresh(settings.presage_max_age_ms / 1000),
             },
         }
 

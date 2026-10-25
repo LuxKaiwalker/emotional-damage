@@ -75,6 +75,11 @@ class ExpressionBoard:
     def latest(self, room_id: str, player_id: str) -> Reading | None:
         return self._readings.get((room_id, player_id))
 
+    def fresh(self, max_age_s: float) -> int:
+        """Players whose newest reading is recent enough to score a frame."""
+        now = time.monotonic()
+        return sum(1 for r in self._readings.values() if now - r.received_at <= max_age_s)
+
     def clear(self) -> None:
         self._readings.clear()
 

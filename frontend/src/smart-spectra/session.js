@@ -272,8 +272,9 @@ function rejected(code, message) {
   if (dead) return;
   if (code === SmartSpectraErrorCode.kInvalidState && !reachedRunning) {
     // Stopping before ever running is what a refused authorization looks like: the
-    // SDK logs the 403s from Presage's API and emits no error event of its own. A new
-    // session would be refused the same way, so this one is final.
+    // SDK logs the 403s (or proxy timeouts) from Presage's API and emits no error event
+    // of its own. This session is finished; the parent starts a fresh one after a
+    // backoff, because through the proxy a refusal is usually the tunnel, not the key.
     dead = true;
     tell({ type: "dead", message: "Presage did not authorize this session." });
     return;

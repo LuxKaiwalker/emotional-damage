@@ -1,0 +1,27 @@
+[Unit]
+# Runs on the always-on machine Presage does NOT block, not on the VPS. See README.md,
+# "Presage and the proxy".
+Description=emotional-damage reverse SOCKS tunnel to the VPS (Presage egress)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Retry even when the first connection fails fast, as it does at boot before DNS is up.
+Environment=AUTOSSH_GATETIME=0
+# -M 0: no autossh monitor port; ServerAlive* notices a dead link, and ssh exits.
+# ExitOnForwardFailure: a reconnect whose 1080 is still held by the dead session exits
+# and retries, instead of sitting connected with no forward. BatchMode: never prompt.
+ExecStart=/usr/bin/autossh -M 0 -N -T \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+  -o ExitOnForwardFailure=yes -o BatchMode=yes \
+  -o StrictHostKeyChecking=accept-new \
+  -o UserKnownHostsFile=/etc/ed-tunnel/known_hosts \
+  -i /etc/ed-tunnel/id_ed25519 \
+  -R 127.0.0.1:1080 root@__VPS__
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

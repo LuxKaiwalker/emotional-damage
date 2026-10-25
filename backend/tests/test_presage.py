@@ -102,6 +102,19 @@ async def test_no_reading_and_stale_reading_score_as_no_face():
     assert (stale.label, stale.meta["reason"]) == (NO_FACE, "stale_reading")
 
 
+def test_health_counts_only_readings_young_enough_to_score(tmp_path):
+    with make_client(
+        tmp_path, processor="presage", presage_ingest_token=TOKEN, presage_max_age_ms=50
+    ) as client:
+        host = create_room(client, "alice")
+        assert push(client, host["room_id"], host["player_id"], {"happy": 90.0}).status_code == 202
+        assert client.get("/api/health").json()["presage"]["players_reading"] == 1
+
+        # Still on the board, but a frame now would score "none": the sidecar has gone quiet.
+        time.sleep(0.06)
+        assert client.get("/api/health").json()["presage"]["players_reading"] == 0
+
+
 def test_ingest_needs_the_token(presage_client):
     host = create_room(presage_client, "alice")
     res = push(presage_client, host["room_id"], host["player_id"], {"happy": 90.0}, token="nope")
