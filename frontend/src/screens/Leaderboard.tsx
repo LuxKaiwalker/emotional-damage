@@ -124,7 +124,12 @@ export function Leaderboard() {
         </ol>
       </ChunkyCard>
 
-      <FaceHall round={round} players={state?.players ?? {}} myId={game.session?.player_id} />
+      <FaceHall
+        scope="round"
+        rounds={round ? [round] : []}
+        players={state?.players ?? {}}
+        myId={game.session?.player_id}
+      />
 
       <section aria-labelledby="receipts" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="receipts__head">

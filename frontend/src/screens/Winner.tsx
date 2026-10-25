@@ -6,6 +6,7 @@ import { sfx } from "../audio/sfx";
 import { useFollowServerPhase, useGame } from "../game";
 import { Confetti, Crown } from "../components/art";
 import { DeepScanSummary } from "../components/DeepScanSummary";
+import { FaceHall } from "../components/FaceHall";
 import { Avatar, ChunkyButton, ChunkyCard, PageShell, Pill } from "../components/ui";
 
 const PLACING_BG = ["var(--yellow)", "var(--white)", "var(--white)", "var(--grey)"];
@@ -116,6 +117,16 @@ export function Winner() {
             </li>
           ))}
         </ol>
+
+        {/* Built from round highlights, and a blitz has no rounds: it would always read empty. */}
+        {!isBlitz && (
+          <FaceHall
+            scope="game"
+            rounds={state?.history ?? []}
+            players={state?.players ?? {}}
+            myId={session?.player_id}
+          />
+        )}
 
         {error && (
           <p className="form-error" role="alert" key={error}>

@@ -311,11 +311,16 @@
 }
 .receipts__grid { --base: 420ms; --step: 80ms; }
 /* The polaroids are slapped onto the wall after the scoreboard, best face last for the drumroll. */
-.facehall__grid > * { animation: plop 520ms var(--ease-out) backwards; animation-delay: calc(700ms + var(--i, 0) * 160ms); }
-.facehall__grid > .facecard--1 { --i: 2; animation: plop 520ms var(--ease-out) backwards, wiggle 480ms var(--ease-out); animation-delay: 1020ms, 1540ms; }
+.facehall { --hall: 700ms; }
+.winner .facehall { --hall: 1300ms; }
+.facehall__grid > * { animation: plop 520ms var(--ease-out) backwards; animation-delay: calc(var(--hall) + var(--i, 0) * 160ms); }
+.facehall__grid > .facecard--1 {
+  --i: 2; animation: plop 520ms var(--ease-out) backwards, wiggle 480ms var(--ease-out);
+  animation-delay: calc(var(--hall) + 320ms), calc(var(--hall) + 840ms);
+}
 .facehall__grid > .facecard--2 { --i: 0; }
 .facehall__grid > .facecard--3 { --i: 1; }
-.facecard__crown { transform-origin: 50% 100%; animation: crown-drop 500ms 1420ms var(--ease-out) backwards; }
+.facecard__crown { transform-origin: 50% 100%; animation: crown-drop 500ms calc(var(--hall) + 720ms) var(--ease-out) backwards; }
 .lb__next { display: inline-block; animation: breathe 900ms ease-in-out infinite alternate; }
 
 /* ---------- Winner: the crown drops onto the champion ---------- */
