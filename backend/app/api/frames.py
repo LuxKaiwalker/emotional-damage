@@ -52,7 +52,7 @@ async def upload_frame(
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     submission = accepted.submission
-    path = await media.write(room_id, submission.id, data)
+    path = await media.write(room_id, submission.id, data, player_id=player_id)
 
     queued = await frames.submit(
         FrameJob(

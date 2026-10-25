@@ -208,6 +208,52 @@ def test_a_miss_reading_scores_nothing_until_a_frame_arrives(presage_client, jpe
     assert sub["result"]["label"] == judge_label(miss, target)
 
 
+def hit_for(target: str) -> dict[str, float]:
+    top = next(name for name in PRESAGE_EXPRESSIONS if judge_label(name, target) == target)
+    return {name: 0.0 for name in PRESAGE_EXPRESSIONS} | {top: 88.0}
+
+
+def upload_and_settle(client, room_id, player_id, jpeg) -> None:
+    res = client.post(f"/api/rooms/{room_id}/frames", data={"player_id": player_id}, files=frame_files(jpeg))
+    assert res.status_code == 202, res.text
+    wait_for(client, room_id, lambda s: s["round"]["submissions"].get(player_id, {}).get("status") == "done")
+
+
+def test_a_reading_pass_shows_the_player_s_newest_frame(presage_client, jpeg):
+    """A reading has no picture, so the hall of faces shows the upload it landed next to."""
+    room_id, player_id, target = start_round(presage_client)
+    upload_and_settle(presage_client, room_id, player_id, jpeg)
+
+    assert push(presage_client, room_id, player_id, hit_for(target)).json()["scored"] is True
+    passed = state_of(presage_client, room_id)["round"]["passed"][player_id]
+    assert passed["result"]["meta"]["source"] == "reading"
+
+    res = presage_client.get(f"/api/media/{passed['id']}")
+    assert res.status_code == 200
+    assert res.content == jpeg
+
+
+def test_a_reading_pass_without_an_upload_has_no_picture(presage_client):
+    room_id, player_id, target = start_round(presage_client)
+    assert push(presage_client, room_id, player_id, hit_for(target)).json()["scored"] is True
+    passed = state_of(presage_client, room_id)["round"]["passed"][player_id]
+    assert presage_client.get(f"/api/media/{passed['id']}").status_code == 404
+
+
+def test_a_reading_pass_does_not_borrow_a_stale_frame(tmp_path, jpeg):
+    """A frame older than a reading may be need not show the face that scored."""
+    with make_client(
+        tmp_path, processor="presage", presage_ingest_token=TOKEN, presage_max_age_ms=200, round_seconds=5
+    ) as client:
+        room_id, player_id, target = start_round(client)
+        upload_and_settle(client, room_id, player_id, jpeg)
+        time.sleep(0.3)
+
+        assert push(client, room_id, player_id, hit_for(target)).json()["scored"] is True
+        passed = state_of(client, room_id)["round"]["passed"][player_id]
+        assert client.get(f"/api/media/{passed['id']}").status_code == 404
+
+
 def judge_label(top: str, target: str) -> str:
     board = ExpressionBoard()
     board.put("r", "p", scores_for(top), stable=True)

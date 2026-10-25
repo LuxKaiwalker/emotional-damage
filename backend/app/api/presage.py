@@ -14,7 +14,8 @@ import secrets
 
 from fastapi import APIRouter, Header, HTTPException
 
-from app.api.deps import EngineDep, SettingsDep
+from app.api.deps import EngineDep, MediaDep, SettingsDep
+from app.capture.media import MediaStore
 from app.game.engine import AlreadyPassed, GameEngine, GameError
 from app.models import ExpressionReport, Phase
 from app.processing.presage import PRESAGE_EXPRESSIONS, READINGS, judge, result_for
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/internal/presage", tags=["presage"])
 async def report_expression(
     body: ExpressionReport,
     engine: EngineDep,
+    media: MediaDep,
     settings: SettingsDep,
     x_presage_token: str | None = Header(default=None),
 ) -> dict:
@@ -56,11 +58,20 @@ async def report_expression(
     )
     scored = False
     if settings.processor == "presage":
-        scored = await _score_if_hit(engine, room, body.room_id, body.player_id)
+        scored = await _score_if_hit(
+            engine, media, room, body.room_id, body.player_id, settings.presage_max_age_ms / 1000
+        )
     return {"status": "recorded", "scored": scored}
 
 
-async def _score_if_hit(engine: GameEngine, room, room_id: str, player_id: str) -> bool:
+async def _score_if_hit(
+    engine: GameEngine,
+    media: MediaStore,
+    room,
+    room_id: str,
+    player_id: str,
+    max_frame_age_s: float,
+) -> bool:
     """Pass the player the moment Presage sees the asked-for face.
 
     Frame uploads arrive every CAPTURE_INTERVAL_MS, so judging only on them made a
@@ -73,6 +84,10 @@ async def _score_if_hit(engine: GameEngine, room, room_id: str, player_id: str) 
     `accepted.target` is the player's *own* target, so the result is judged against the
     right face even if they advanced between the two awaits -- `apply_result` drops it in
     that case rather than paying for a face they have left.
+
+    The submission has no frame of its own, so it borrows the player's newest upload --
+    at most one capture tick old -- for the hall of faces to show. Only one as young as
+    a reading has to be to score, so the picture is of the face that was scored.
     """
     # Whichever face this player is on -- the shared round in classic, their own cursor in
     # blitz. Asking the engine keeps this path from having to know which mode it is in.
@@ -95,6 +110,7 @@ async def _score_if_hit(engine: GameEngine, room, room_id: str, player_id: str) 
     except (AlreadyPassed, GameError):
         # Passed meanwhile, rate-limited by an upload a moment ago, or the round ended.
         return False
+    await media.borrow_latest(room_id, player_id, accepted.submission.id, max_frame_age_s)
     result = result_for(
         reading,
         accepted.target,
