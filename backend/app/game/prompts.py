@@ -21,14 +21,23 @@ class Prompt:
 
 
 PROMPTS = (
-    Prompt("angry", "Look Angry, like you just saw your ex with someone else"),
-    Prompt("contempt", "look contempt"),
-    Prompt("disgusted", "look disgusted"),
-    Prompt("disappointed", "Look disappointed"),
-    Prompt("scared", "Look scared"),
-    Prompt("sad", "Look sad, like you just a massive hackathon because someone nuked the repo"),
-    Prompt("surprised", "look surprised! like you just saw a ghost"),
-    Prompt("happy", "look happy, like you just got a promotion at work"),
+    Prompt("angry", "Look angry, like you just saw your ex with someone else."),
+    Prompt("angry", "Look angry, like someone started slandering a close friend."),
+    Prompt("contempt", "Look contemptful, like someone just shot down your brilliant idea."),
+    Prompt("contempt", "Look contemptful, like someone just suggested the dumbest idea."),
+    Prompt("disgusted", "Look disgusted, like you've just seen some rotten fish."),
+    Prompt("disgusted", "Look disgusted, like you've just seen the worst movie of your life."),
+    Prompt("disappointed", "Look disappointed, like an Asian parent seeing their child fail an exam."),
+    Prompt("disappointed", "Look disappointed, like you just got rejected from a job that you really wanted."),
+    Prompt("scared", "Look scared, like you just saw an accident happened."),
+    Prompt("scared", "Look scared, like you just saw an accident."),
+    Prompt("sad", "Look sad, like you just lost a massive hackathon because someone nuked the repo."),
+    Prompt("sad", "Look sad, like you just heard some terrible news."),
+    Prompt("surprised", "Look surprised, like you just saw a ghost!"),
+    Prompt("surprised", "Look surprised, like you just heard that someone you know did something unexpected."),
+    Prompt("happy", "Look happy, like you just got a promotion at work!"),
+    Prompt("happy", "Look happy, like you just got a job you really wanted!"),
+    Prompt("happy", "Look happy, like you just found out that you got a first class for your degree!"),
 )
 
 # Every label the game knows about. `app.processing.dummy` draws its fake reads from this

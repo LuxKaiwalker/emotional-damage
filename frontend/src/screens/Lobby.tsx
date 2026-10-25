@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import { useFollowServerPhase, useGame } from "../game";
-import { Avatar, ChunkyButton, ChunkyCard, Header, PageShell, Pill } from "../components/ui";
+import {
+  Avatar,
+  ChunkyButton,
+  ChunkyCard,
+  Header,
+  PageShell,
+  Pill,
+} from "../components/ui";
 
 /** The game lengths the server accepts (ROUND_CHOICES in backend/app/game/engine.py). */
 const ROUND_CHOICES = [5, 10];
@@ -19,6 +26,7 @@ function TimingRow({
   value,
   step,
   min,
+  max,
   editable,
   busy,
   onChange,
@@ -28,6 +36,7 @@ function TimingRow({
   step: number;
   /** The lowest value the server accepts, so "−" never sends one it will refuse. */
   min: number;
+  max: number;
   editable: boolean;
   busy: boolean;
   onChange: (next: number) => void;
@@ -59,7 +68,7 @@ function TimingRow({
         <button
           type="button"
           aria-label={`${label}: ${step}s more`}
-          disabled={busy}
+          disabled={busy || value + step > max}
           onClick={() => onChange(value + step)}
         >
           +
@@ -88,7 +97,9 @@ export function Lobby() {
 
   const copyInvite = async () => {
     try {
-      await navigator.clipboard.writeText(`${location.origin}/join?code=${code}`);
+      await navigator.clipboard.writeText(
+        `${location.origin}/join?code=${code}`,
+      );
       setCopied(true);
     } catch {
       /* clipboard blocked (insecure context / permissions): leave the label alone */
@@ -117,7 +128,9 @@ export function Lobby() {
       // The new count arrives with the next snapshot, so every lobby shows it at once.
       await api.setRounds(session.room_id, session.player_id, rounds);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not change the rounds");
+      setError(
+        err instanceof Error ? err.message : "Could not change the rounds",
+      );
     }
   };
 
@@ -128,9 +141,16 @@ export function Lobby() {
     setSavingTiming(true);
     setTimingError(null);
     try {
-      await api.setRoundTiming(session.room_id, session.player_id, roundSeconds, decrement);
+      await api.setRoundTiming(
+        session.room_id,
+        session.player_id,
+        roundSeconds,
+        decrement,
+      );
     } catch (err) {
-      setTimingError(err instanceof Error ? err.message : "Could not change the timing");
+      setTimingError(
+        err instanceof Error ? err.message : "Could not change the timing",
+      );
     } finally {
       setSavingTiming(false);
     }
@@ -161,10 +181,17 @@ export function Lobby() {
               <div className="code-card__code" aria-labelledby="code-label">
                 {code}
               </div>
-              <button className="btn copy-btn" type="button" onClick={copyInvite} aria-live="polite">
+              <button
+                className="btn copy-btn"
+                type="button"
+                onClick={copyInvite}
+                aria-live="polite"
+              >
                 {copied ? "copied!" : "Copy invite link"}
               </button>
-              <span className="code-card__roast">send it to the group chat. or don't. coward.</span>
+              <span className="code-card__roast">
+                send it to the group chat. or don't. coward.
+              </span>
             </ChunkyCard>
 
             <ChunkyCard className="rules">
@@ -173,7 +200,11 @@ export function Lobby() {
               <div className="rules__row">
                 <span>Rounds</span>
                 {isHost ? (
-                  <span className="rounds-pick" role="group" aria-label="Rounds">
+                  <span
+                    className="rounds-pick"
+                    role="group"
+                    aria-label="Rounds"
+                  >
                     {ROUND_CHOICES.map((n) => (
                       <button
                         key={n}
@@ -187,7 +218,9 @@ export function Lobby() {
                     ))}
                   </span>
                 ) : (
-                  <span className="sticker rules__vibe">{config?.rounds_per_game ?? "…"}</span>
+                  <span className="sticker rules__vibe">
+                    {config?.rounds_per_game ?? "…"}
+                  </span>
                 )}
               </div>
               <TimingRow
@@ -195,23 +228,31 @@ export function Lobby() {
                 value={config?.round_seconds}
                 step={5}
                 min={1}
+                max={180}
                 editable={isHost && !!config}
                 busy={savingTiming}
-                onChange={(v) => config && void setTiming(v, config.round_decrement_seconds)}
+                onChange={(v) =>
+                  config && void setTiming(v, config.round_decrement_seconds)
+                }
               />
               <TimingRow
                 label="Shorter each round by"
                 value={config?.round_decrement_seconds}
                 step={1}
                 min={0}
+                max={15}
                 editable={isHost && !!config}
                 busy={savingTiming}
-                onChange={(v) => config && void setTiming(config.round_seconds, v)}
+                onChange={(v) =>
+                  config && void setTiming(config.round_seconds, v)
+                }
               />
               <div className="rules__row">
                 <span>Round lengths</span>
                 <span className="sticker rules__vibe">
-                  {roundLengths.length ? roundLengths.map((s) => `${s}s`).join(" → ") : "…"}
+                  {roundLengths.length
+                    ? roundLengths.map((s) => `${s}s`).join(" → ")
+                    : "…"}
                 </span>
               </div>
               {timingError && (
@@ -221,7 +262,9 @@ export function Lobby() {
               )}
               <div className="rules__row">
                 <span>Max points per round</span>
-                <span className="sticker rules__vibe">{config?.max_points_per_round ?? "…"}</span>
+                <span className="sticker rules__vibe">
+                  {config?.max_points_per_round ?? "…"}
+                </span>
               </div>
             </ChunkyCard>
           </section>
@@ -243,24 +286,43 @@ export function Lobby() {
                   return (
                     <li key={`empty-${i}`} className="slot slot--empty">
                       <Avatar initial="?" size={44} />
-                      <span className="slot__wait">waiting for victim #{i + 1}…</span>
+                      <span className="slot__wait">
+                        waiting for victim #{i + 1}…
+                      </span>
                     </li>
                   );
                 }
-                const tag = seat.isHost ? "HOST" : seat.player.connected ? "READY" : "NOT READY";
+                const tag = seat.isHost
+                  ? "HOST"
+                  : seat.player.connected
+                    ? "READY"
+                    : "NOT READY";
                 return (
                   <li key={seat.player.id} className="slot slot--filled">
-                    <Avatar initial={seat.look.initial} color={seat.look.color} size={44} />
+                    <Avatar
+                      initial={seat.look.initial}
+                      color={seat.look.color}
+                      size={44}
+                    />
                     <div className="slot__who">
                       <span className="slot__name">
                         {seat.player.name}
                         {seat.isMe ? " (you)" : ""}
                       </span>
                       <span className="slot__status">
-                        {seat.player.connected ? "cam on · vibes questionable" : "connecting…"}
+                        {seat.player.connected
+                          ? "cam on · vibes questionable"
+                          : "connecting…"}
                       </span>
                     </div>
-                    <Pill bg={TAG_BG[tag]} style={{ flex: "0 0 auto", fontSize: 13, padding: "4px 10px" }}>
+                    <Pill
+                      bg={TAG_BG[tag]}
+                      style={{
+                        flex: "0 0 auto",
+                        fontSize: 13,
+                        padding: "4px 10px",
+                      }}
+                    >
                       {tag}
                     </Pill>
                   </li>
