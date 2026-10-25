@@ -48,7 +48,7 @@ function TimingRow({
     return (
       <div className="rules__row">
         <span>{label}</span>
-        <span className="sticker rules__vibe">{shown}</span>
+        <span className="sticker rules__vibe" key={shown}>{shown}</span>
       </div>
     );
   }
@@ -64,7 +64,7 @@ function TimingRow({
         >
           −
         </button>
-        <span className="sticker rules__vibe" aria-live="polite">
+        <span className="sticker rules__vibe" aria-live="polite" key={shown}>
           {shown}
         </span>
         <button
@@ -190,7 +190,7 @@ export function Lobby() {
                 {code}
               </div>
               <button
-                className="btn copy-btn"
+                className={`btn copy-btn ${copied ? "copy-btn--done" : ""}`}
                 type="button"
                 onClick={copyInvite}
                 aria-live="polite"
@@ -257,14 +257,14 @@ export function Lobby() {
               />
               <div className="rules__row">
                 <span>Round lengths</span>
-                <span className="sticker rules__vibe">
+                <span className="sticker rules__vibe" key={roundLengths.join()}>
                   {roundLengths.length
                     ? roundLengths.map((s) => `${s}s`).join(" → ")
                     : "…"}
                 </span>
               </div>
               {timingError && (
-                <p className="form-error" role="alert">
+                <p className="form-error" role="alert" key={timingError}>
                   {timingError}
                 </p>
               )}
@@ -282,6 +282,7 @@ export function Lobby() {
               <h1>The victims</h1>
               <span
                 className="victims__count"
+                key={roster.length}
                 aria-label={`${roster.length} of ${maxPlayers} players`}
               >
                 {roster.length} / {maxPlayers || "…"}
@@ -347,7 +348,7 @@ export function Lobby() {
                     : "Waiting for the host to start the damage."}
               </span>
               {error && (
-                <p className="form-error" role="alert">
+                <p className="form-error" role="alert" key={error}>
                   {error}
                 </p>
               )}

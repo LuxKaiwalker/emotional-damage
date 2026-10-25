@@ -35,9 +35,8 @@ button, input { font-family: inherit; color: var(--ink); }
 .dots--cyan   { background-color: var(--cyan); }
 .dots--lime   { background-color: var(--lime); }
 
-/* button wiggle */
-.btn { transition: transform .12s; cursor: pointer; }
-.btn:hover:not(:disabled) { transform: translate(-3px, -3px) rotate(-1deg); }
+/* button wiggle: hover, press and release live in motion.css */
+.btn { cursor: pointer; }
 .btn:focus-visible { outline: 4px solid var(--ink); outline-offset: 4px; }
 .btn:disabled { cursor: not-allowed; opacity: .55; }
 
@@ -61,7 +60,8 @@ button, input { font-family: inherit; color: var(--ink); }
 .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .pill-link {
   font-weight: 700; font-size: 17px; background: var(--white); border: var(--border-thin);
-  border-radius: var(--r-pill); padding: 10px 18px; text-decoration: none; box-shadow: var(--shadow-sm);
+  border-radius: var(--r-pill); padding: 10px 18px; text-decoration: none;
+  --sh: 4px; box-shadow: var(--sh) var(--sh) 0 var(--ink);
 }
 .wordmark {
   font-family: var(--font-display); font-size: 30px; color: var(--white);
@@ -71,13 +71,15 @@ button, input { font-family: inherit; color: var(--ink); }
 .chunky-btn {
   display: inline-block; font-family: var(--font-display); font-size: 26px; line-height: 1.2;
   text-decoration: none; border: var(--border); border-radius: var(--r-md);
-  padding: 14px 28px; box-shadow: var(--shadow-md); text-align: center;
+  padding: 14px 28px; text-align: center;
+  /* shadow depth as a variable, so hover can lift and press can sink by the same amount */
+  --sh: 6px; box-shadow: var(--sh) var(--sh) 0 var(--ink);
 }
 .chunky-btn--yellow { background: var(--yellow); }
 .chunky-btn--lime   { background: var(--lime); }
 .chunky-btn--white  { background: var(--white); }
-.chunky-btn--lg { font-size: 30px; border-radius: 20px; box-shadow: 7px 7px 0 var(--ink); }
-.chunky-btn--plain { font-family: var(--font-body); font-weight: 700; font-size: 18px; padding: 14px 20px; box-shadow: 5px 5px 0 var(--ink); }
+.chunky-btn--lg { font-size: 30px; border-radius: 20px; --sh: 7px; }
+.chunky-btn--plain { font-family: var(--font-body); font-weight: 700; font-size: 18px; padding: 14px 20px; --sh: 5px; }
 
 .sticker {
   display: inline-block; border: var(--border-thin); border-radius: var(--r-sm);
@@ -437,9 +439,6 @@ button, input { font-family: inherit; color: var(--ink); }
 .snitch__uplink { margin: 0; font-size: 13px; font-weight: 600; opacity: 0.7; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn { transition: none; }
-  .btn:hover:not(:disabled) { transform: none; }
-  .voice-bars--speaking span { animation: none; }
   html { scroll-behavior: auto; }
 }
 
@@ -454,5 +453,4 @@ button, input { font-family: inherit; color: var(--ink); }
   cursor: pointer;
 }
 .sound-toggle[aria-pressed="false"] { background: var(--white); }
-.sound-toggle:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--ink); }
 .sound-toggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }

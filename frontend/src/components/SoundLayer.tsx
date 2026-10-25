@@ -50,9 +50,9 @@ export function SoundLayer() {
         {/* A chunky pixel speaker. */}
         <path d="M2 6h3v4H2zM5 5h1v6H5zM6 4h1v8H6zM7 3h1v10H7z" fill="currentColor" />
         {muted ? (
-          <path d="M10 6h1v1h-1zM11 7h1v1h-1zM12 8h1v1h-1zM13 9h1v1h-1zM13 6h1v1h-1zM12 7h1v1h-1zM11 8h1v1h-1zM10 9h1v1h-1z" fill="currentColor" />
+          <path className="sound-toggle__glyph" d="M10 6h1v1h-1zM11 7h1v1h-1zM12 8h1v1h-1zM13 9h1v1h-1zM13 6h1v1h-1zM12 7h1v1h-1zM11 8h1v1h-1zM10 9h1v1h-1z" fill="currentColor" />
         ) : (
-          <path d="M9 6h1v4H9zM11 4h1v1h-1zM12 5h1v6h-1zM11 11h1v1h-1z" fill="currentColor" />
+          <path className="sound-toggle__glyph" d="M9 6h1v4H9zM11 4h1v1h-1zM12 5h1v6h-1zM11 11h1v1h-1z" fill="currentColor" />
         )}
       </svg>
     </button>

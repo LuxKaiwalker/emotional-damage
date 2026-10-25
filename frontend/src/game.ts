@@ -131,11 +131,11 @@ export function useFollowServerPhase(game: Game): void {
 
   useEffect(() => {
     if (!session) {
-      navigate(code ? `/join?code=${code}` : "/", { replace: true });
+      navigate(code ? `/join?code=${code}` : "/", { replace: true, viewTransition: true });
       return;
     }
     if (!state) return;
     const target = phasePath(state.phase, code);
-    if (pathname !== target) navigate(target, { replace: true });
+    if (pathname !== target) navigate(target, { replace: true, viewTransition: true });
   }, [state?.phase, state, session, code, pathname, navigate]);
 }

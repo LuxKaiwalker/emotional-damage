@@ -151,7 +151,7 @@ export function Leaderboard() {
         {/* No local timer: the server starts the next round after its intermission and the
             phase change moves everyone at once. */}
         <Pill dark style={{ padding: "10px 18px", fontSize: 16 }}>
-          <span aria-live="polite">
+          <span className="lb__next" aria-live="polite">
             {last ? "final results" : "next round"} incoming…
           </span>
         </Pill>

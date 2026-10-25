@@ -42,7 +42,7 @@ export function PageShell({
 export function Header({ back, to = "/" }: { back: string; to?: string }) {
   return (
     <header className="header">
-      <Link to={to} className="pill-link">
+      <Link to={to} className="pill-link" viewTransition>
         {back}
       </Link>
       <span className="wordmark">EMOTIONAL DAMAGE</span>
@@ -100,7 +100,7 @@ export function ChunkyButton({
   const cls = `btn chunky-btn chunky-btn--${color} ${size ? `chunky-btn--${size}` : ""} ${className}`;
   if (to && !disabled) {
     return (
-      <Link to={to} className={cls}>
+      <Link to={to} className={cls} viewTransition>
         {children}
       </Link>
     );
@@ -207,7 +207,11 @@ export function MetricTile({
   return (
     <div className="metric" style={{ background: bg }}>
       <div className="metric__label">{label}</div>
-      <div className="metric__value">
+      {/* Keyed by the value, so a new read replays its bump (motion.css). */}
+      <div
+        className="metric__value"
+        key={typeof value === "string" || typeof value === "number" ? value : undefined}
+      >
         {value}
         {unit && <span className="metric__unit"> {unit}</span>}
       </div>
@@ -239,10 +243,11 @@ export function MeterBar({
       aria-valuemax={100}
       aria-label={label}
     >
+      {/* Slid in from the left rather than resized, so the spring stays on the compositor. */}
       <div
         className="meter__fill"
         style={{
-          width: `${value}%`,
+          transform: `translateX(${value - 100}%)`,
           background: color,
           borderRight: divider ? "var(--border-thin)" : undefined,
         }}
@@ -253,10 +258,13 @@ export function MeterBar({
 
 export function Countdown({ seconds }: { seconds: number }) {
   const done = seconds <= 0;
+  const hot = !done && seconds <= 5;
   return (
     <>
+      {/* The last five seconds remount the dial every tick, so it shakes on each one. */}
       <div
-        className={`countdown ${done ? "countdown--done" : ""}`}
+        key={hot ? seconds : "calm"}
+        className={`countdown ${done ? "countdown--done" : ""} ${hot ? "countdown--hot" : ""}`}
         role="timer"
         aria-label={
           done
@@ -264,7 +272,10 @@ export function Countdown({ seconds }: { seconds: number }) {
             : `${seconds} second${seconds === 1 ? "" : "s"} left`
         }
       >
-        <span className="countdown__num">{done ? "captured!" : seconds}</span>
+        {/* Keyed by the second, so every tick replays its pop. */}
+        <span className="countdown__num" key={done ? "done" : seconds}>
+          {done ? "captured!" : seconds}
+        </span>
         <span className="countdown__label">{done ? "nice." : "FACE NOW"}</span>
       </div>
       <span className="sr-only" aria-live="assertive">

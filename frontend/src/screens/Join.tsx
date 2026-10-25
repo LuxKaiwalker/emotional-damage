@@ -80,7 +80,7 @@ export function Join() {
       if (granted) {
         const sess = await api.joinRoom(code, name, getClientId());
         saveSession(sess, name);
-        navigate(`/lobby/${sess.join_code.toUpperCase()}`);
+        navigate(`/lobby/${sess.join_code.toUpperCase()}`, { viewTransition: true });
       } else {
         setError("You need to enable your webcam to play");
       }
@@ -154,7 +154,7 @@ export function Join() {
             </div>
 
             {error && (
-              <p className="form-error" role="alert">
+              <p className="form-error" role="alert" key={error}>
                 {error}
               </p>
             )}

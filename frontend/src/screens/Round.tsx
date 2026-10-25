@@ -169,7 +169,7 @@ export function Round() {
         </div>
       </header>
 
-      <ChunkyCard as="section" className="announcer">
+      <ChunkyCard as="section" className={`announcer ${speaking ? "announcer--speaking" : ""}`}>
         <UncleDamage className="announcer__face" />
         <div className="announcer__mid">
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -196,7 +196,10 @@ export function Round() {
           </div>
           {/* The generated line once it lands, with the prompt the server is actually
               scoring against underneath it. Before then the prompt is the line. */}
-          <p className="announcer__prompt">"{round?.voice_line ?? round?.prompt ?? "…"}"</p>
+          {/* Keyed by the text, so the generated line pops in when it replaces the prompt. */}
+          <p className="announcer__prompt" key={round?.voice_line ?? round?.prompt ?? ""}>
+            "{round?.voice_line ?? round?.prompt ?? "…"}"
+          </p>
           {round?.voice_line && (
             <p className="announcer__target">
               show us: <b>{round.target}</b>
@@ -268,7 +271,7 @@ export function Round() {
           </div>
           <div className="aura-box">
             <div>aura so far</div>
-            <div>{me?.points ?? 0}</div>
+            <div key={me?.points ?? 0}>{me?.points ?? 0}</div>
           </div>
           <p className="snitch__uplink">
             frames sent {uploader.sent} · skipped {uploader.skipped} · failed {uploader.failed}
