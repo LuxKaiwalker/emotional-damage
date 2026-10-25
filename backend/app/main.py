@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import frames, highscores as highscores_api, rooms, vitals, voice, ws
+from app.api import frames, highscores as highscores_api, presage, rooms, vitals, voice, ws
 from app.api.deps import FrameQueueDep, RoomStoreDep, SettingsDep
 from app.capture.media import MediaStore
 from app.capture.queue import FrameQueue
@@ -15,6 +15,7 @@ from app.game.highscores import HighScoreStore
 from app.game.hub import ConnectionManager
 from app.game.store import InMemoryRoomStore
 from app.game.voice import VoiceStore, VoiceStudio
+from app.processing.presage import READINGS
 from app.processing.registry import get_processor
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -23,6 +24,13 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings: Settings = app.state.settings
+    if settings.processor == "presage" and not settings.presage_ingest_token:
+        # Fail at startup: without the token the sidecar cannot deliver a single reading,
+        # and every frame of every round would quietly score as "no face".
+        raise ValueError(
+            "PROCESSOR=presage needs PRESAGE_INGEST_TOKEN, set to the same value in the "
+            "SmartSpectra sidecar's environment."
+        )
     media = MediaStore(settings.media_dir, settings.media_ttl_seconds)
     store = InMemoryRoomStore()
     hub = ConnectionManager()
@@ -83,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(rooms.router)
     app.include_router(frames.router)
     app.include_router(vitals.router)
+    app.include_router(presage.router)
     app.include_router(voice.router)
     app.include_router(ws.router)
     app.include_router(highscores_api.router)
@@ -104,6 +113,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "speaks": studio.speaks,
             },
             "vitals_enabled": settings.vitals_enabled,
+            # Under PROCESSOR=presage, `players_reading` at 0 mid-game means the sidecar
+            # is not getting through, and every frame is being judged "none".
+            "presage": {
+                "ingest": bool(settings.presage_ingest_token),
+                "players_reading": len(READINGS),
+            },
         }
 
     return app

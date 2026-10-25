@@ -49,9 +49,13 @@ export function Round() {
   // Anchored to the server's own round deadline, not a local timer.
   const left = useServerCountdown(round?.ends_at, clockOffsetMs);
 
-  const spectra = useSmartSpectra();
+  const spectra = useSmartSpectra({
+    roomId: session?.room_id ?? null,
+    playerId: session?.player_id ?? null,
+  });
 
-  // One camera, two consumers: raw frames to the vitals sidecar, JPEG stills to the game server.
+  // One camera, two consumers: raw frames to the Presage sidecar (vitals and the expression
+  // read the server scores with), JPEG stills to the game server.
   const uploader = useFrameUploader({
     roomId: session?.room_id ?? null,
     playerId: session?.player_id ?? null,

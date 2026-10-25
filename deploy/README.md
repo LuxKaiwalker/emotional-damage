@@ -30,10 +30,13 @@ VITE_SPECTRA_WS_URL=wss://<domain>/spectra/ npm run build
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin edgame
 sudo install -d -m 0750 -o root -g edgame /etc/emotional-damage
 sudo tee /etc/emotional-damage/backend.env >/dev/null <<'ENV'
-# dummy  = label from the frame's SHA-256, ignores the actual face (no key needed)
-# gemini = real vision classification (needs GEMINI_API_KEY)
-PROCESSOR=gemini
-GEMINI_API_KEY=
+# dummy   = label from the frame's SHA-256, ignores the actual face (no key needed)
+# gemini  = real vision classification (needs GEMINI_API_KEY)
+# presage = Presage's expression read, pushed by ed-spectra (needs the token below)
+PROCESSOR=presage
+# Same value in spectra.env; generate with `openssl rand -hex 32`.
+PRESAGE_INGEST_TOKEN=
+GEMINI_API_KEY=           # absent -> narration speaks the prompt as written
 ELEVENLABS_API_KEY=       # absent -> narration is text, no audio
 MEDIA_DIR=/var/lib/emotional-damage/media
 ENV
@@ -44,6 +47,12 @@ WEB_ORIGIN=https://<domain>
 PORT=3001
 # Presage blocks this box's IP; see "Presage and the proxy" below.
 HTTPS_PROXY=socks5h://127.0.0.1:1080
+# Where expression readings go, and the token backend.env expects.
+BACKEND_URL=http://127.0.0.1:8000
+PRESAGE_INGEST_TOKEN=
+# Each player costs one Presage session (~1/3 core, ~0.5 GB) for expressions, plus one
+# more for vitals unless this is off. A 1 vCPU / 4 GB box fits two or three players.
+SPECTRA_VITALS=off
 ENV
 sudo chmod 0640 /etc/emotional-damage/*.env
 
@@ -96,6 +105,23 @@ To check the route, run this on the box (403 = blocked, 405 = reached the API):
 ```bash
 curl -sI --proxy socks5h://127.0.0.1:1080 https://cont-api.physiology.presagetech.com/ | head -1
 ```
+
+## How PROCESSOR=presage works
+
+The browser streams its camera to `ed-spectra` (wss://<domain>/spectra/), naming its room
+and player. The sidecar forks one process per Presage session (`session.js`): SDK state
+is process-global, so sessions cannot share a process. Each expression reading is POSTed
+to the backend at `/internal/presage/expressions` over loopback; nginx does not proxy
+that path. A frame upload is then judged by that player's newest reading, at most
+`PRESAGE_MAX_AGE_MS` (1500) old. `/api/health` shows `presage.players_reading`: 0
+mid-game means the sidecar is not getting through, and every frame scores "none".
+
+`session.js` works around three SDK behaviours that otherwise kill sessions within
+seconds on this box. It calls `sendFrame` off the JS thread, because a synchronous call
+deadlocks against the SDK's callbacks. It copies each frame into stable memory. And it
+feeds expressions on a steady 30 fps clock, because Presage abandons sessions running
+much below camera rate. A wedged session is still caught by a heartbeat watchdog and
+replaced.
 
 ## Check it
 

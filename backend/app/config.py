@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     queue_maxsize: int = 64
     # Vision model for PROCESSOR=gemini. Needs GEMINI_API_KEY.
     gemini_vision_model: str = "gemini-2.5-flash"
+    # PROCESSOR=presage: the SmartSpectra sidecar pushes each player's expression here,
+    # authenticated with this shared token (set the same value in the sidecar's env).
+    presage_ingest_token: str | None = None
+    # A frame is judged by the player's newest reading only if it is at most this old;
+    # older means the face left the frame or the sidecar stopped, and the frame misses.
+    presage_max_age_ms: int = 1500
 
     # --- client-reported vitals ------------------------------------------
     # Accepted, stored and broadcast, but never an input to scoring: they come from the

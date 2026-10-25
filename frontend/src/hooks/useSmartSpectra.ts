@@ -30,7 +30,8 @@ export interface Spectra {
  * Sole owner of the camera.
  *
  * One `getUserMedia` feeds two consumers:
- *   - raw RGBA at camera rate -> the SmartSpectra node server (vitals)
+ *   - raw RGBA at camera rate -> the SmartSpectra node server (vitals, and the Presage
+ *     expression read that PROCESSOR=presage scores with -- hence the player's ids)
  *   - JPEG stills on demand   -> the game backend via `captureFrame` (scoring)
  *
  * These used to be two hooks each calling `getUserMedia` independently, which meant two
@@ -54,7 +55,11 @@ function cameraErrorMessage(err: unknown): string {
   }
 }
 
-export function useSmartSpectra(): Spectra {
+export function useSmartSpectra(opts: {
+  roomId: string | null;
+  playerId: string | null;
+}): Spectra {
+  const { roomId, playerId } = opts;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +133,13 @@ export function useSmartSpectra(): Spectra {
         await video.play();
         setReady(true);
 
-        socket = new WebSocket(WS_URL);
+        // The sidecar files each expression reading against this player.
+        const url = new URL(WS_URL, window.location.href);
+        if (roomId && playerId) {
+          url.searchParams.set("room_id", roomId);
+          url.searchParams.set("player_id", playerId);
+        }
+        socket = new WebSocket(url);
         socket.binaryType = "arraybuffer";
 
         // Set when the sidecar explains why it is hanging up, so the close that follows
@@ -224,7 +235,7 @@ export function useSmartSpectra(): Spectra {
       stream?.getTracks().forEach((t) => t.stop());
       setReady(false);
     };
-  }, [restartKey]);
+  }, [restartKey, roomId, playerId]);
 
   return { videoRef, ready, error, status, measurements, validation, captureFrame };
 }

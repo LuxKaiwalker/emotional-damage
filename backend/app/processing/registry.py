@@ -19,7 +19,14 @@ def _make_gemini() -> Processor:
     return GeminiProcessor()
 
 
+def _make_presage() -> Processor:
+    from app.processing.presage import PresageProcessor
+
+    return PresageProcessor()
+
+
 _PROCESSORS["gemini"] = _make_gemini
+_PROCESSORS["presage"] = _make_presage
 
 
 def register(processor: type[Processor]) -> None:

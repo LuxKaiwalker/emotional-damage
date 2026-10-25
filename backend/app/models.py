@@ -224,6 +224,17 @@ class VitalsReport(BaseModel):
     metrics: dict[str, float]
 
 
+class ExpressionReport(BaseModel):
+    """One Presage expression reading, pushed by the SmartSpectra sidecar over loopback."""
+
+    room_id: str
+    player_id: str
+    # Presage expression name (lowercase ExpressionType) -> confidence, 0 to 100 as the
+    # SDK reports it.
+    scores: dict[str, float]
+    stable: bool = True
+
+
 class PlayerSession(BaseModel):
     """What a client needs to persist in order to act as this player."""
 
