@@ -10,14 +10,14 @@ Open the link and press **Play** on any artboard to click through the flow. When
 
 ## 0. Screen map
 
-| # | Artboard | Route | Purpose |
-|---|---|---|---|
-| 1 | Home | `/` | Create game or Join game |
-| 2a | Join game | `/join` | Enter the 4-letter code and a gamer tag |
-| 2b | Lobby (host) | `/lobby/:code` | Show the code, 5 player slots and settings, then Start |
-| 3 | The round | `/play/:code` | Voice prompt, countdown, webcam, live metrics and Deep scan |
-| 4 | Round leaderboard | `/play/:code/results` | Ranked rows and Presage receipts |
-| 5 | Winner | `/play/:code/winner` | Champion, stats, Run it back / Touch grass |
+| #   | Artboard          | Route                 | Purpose                                                     |
+| --- | ----------------- | --------------------- | ----------------------------------------------------------- |
+| 1   | Home              | `/`                   | Create game or Join game                                    |
+| 2a  | Join game         | `/join`               | Enter the 4-letter code and a gamer tag                     |
+| 2b  | Lobby (host)      | `/lobby/:code`        | Show the code, 5 player slots and settings, then Start      |
+| 3   | The round         | `/play/:code`         | Voice prompt, countdown, webcam, live metrics and Deep scan |
+| 4   | Round leaderboard | `/play/:code/results` | Ranked rows and Presage receipts                            |
+| 5   | Winner            | `/play/:code/winner`  | Champion, stats, Run it back / Touch grass                  |
 
 Flow: Home → (Create → Lobby) or (Join → Lobby) → Round → Leaderboard → (next Round … ) → Winner → Lobby or Home.
 
@@ -70,36 +70,41 @@ Create `src/styles/tokens.css`. These values are lifted straight from the design
 ```css
 :root {
   /* colours */
-  --ink: #111111;          /* all text, borders, shadows */
-  --yellow: #FFE135;       /* Home, Leaderboard bg; primary buttons */
-  --pink: #FF4FA3;         /* Lobby bg; Create card; highlights */
-  --cyan: #3EC6FF;         /* Join, Winner bg; Join card */
-  --lime: #9BF04B;         /* Round bg; Start / Next buttons */
-  --white: #FFFFFF;
-  --grey: #E8E8E8;         /* last place / "down bad" */
+  --ink: #111111; /* all text, borders, shadows */
+  --yellow: #ffe135; /* Home, Leaderboard bg; primary buttons */
+  --pink: #ff4fa3; /* Lobby bg; Create card; highlights */
+  --cyan: #3ec6ff; /* Join, Winner bg; Join card */
+  --lime: #9bf04b; /* Round bg; Start / Next buttons */
+  --white: #ffffff;
+  --grey: #e8e8e8; /* last place / "down bad" */
 
   /* tints used inside cards */
-  --tint-pink: #FFE3F0;
-  --tint-cyan: #DDF4FF;
-  --tint-yellow: #FFF8D6;
-  --tint-lime: #EEFCE0;
-  --webcam: #1D1D24;
+  --tint-pink: #ffe3f0;
+  --tint-cyan: #ddf4ff;
+  --tint-yellow: #fff8d6;
+  --tint-lime: #eefce0;
+  --webcam: #1d1d24;
 
   /* shape */
   --border: 4px solid var(--ink);
   --border-thin: 3px solid var(--ink);
-  --r-sm: 12px;  --r-md: 18px;  --r-lg: 24px;  --r-xl: 28px;  --r-pill: 999px;
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 24px;
+  --r-xl: 28px;
+  --r-pill: 999px;
   --shadow-sm: 4px 4px 0 var(--ink);
   --shadow-md: 6px 6px 0 var(--ink);
   --shadow-lg: 10px 10px 0 var(--ink);
 
   /* type */
-  --font-display: 'Bagel Fat One', cursive;
-  --font-body: 'Fredoka', sans-serif;
+  --font-display: "Bagel Fat One", cursive;
+  --font-body: "Fredoka", sans-serif;
 }
 ```
 
 **Rules of the look:**
+
 - Text is always `--ink`, including on pink, cyan, lime and yellow. Never use white text on a colour, because it fails contrast. The one exception is the black strips (ticker, aura box, AI vibe check), which use yellow, lime or white text.
 - Every card has a thick black border and a **hard** offset shadow with no blur. There are no soft shadows and no gradients.
 - Slight rotations (−4° to +8°) on stickers, big cards and badges give the goofy feel. Keep body text unrotated or nearly so (≤ 1°).
@@ -111,10 +116,12 @@ Create `src/styles/tokens.css`. These values are lifted straight from the design
 Add to `index.html` `<head>`:
 
 ```html
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Fredoka:wght@400;500;600;700&display=swap">
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Fredoka:wght@400;500;600;700&display=swap"
+/>
 ```
 
 - **Bagel Fat One** (weight 400): titles, big numbers, button labels, rank numbers, avatar initials.
@@ -140,27 +147,65 @@ Outlined hero title (Home, Leaderboard, Winner):
 `src/styles/global.css`:
 
 ```css
-*, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; overflow-x: hidden; max-width: 100%; }
-body { font-family: var(--font-body); color: var(--ink); }
-a { color: var(--ink); }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  overflow-x: hidden;
+  max-width: 100%;
+}
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+}
+a {
+  color: var(--ink);
+}
 
 /* polka-dot page backgrounds — one colour per screen */
-.dots { background-image: radial-gradient(var(--ink) 1.4px, transparent 1.6px); background-size: 26px 26px; overflow-x: clip; }
-.dots--yellow { background-color: var(--yellow); }
-.dots--pink   { background-color: var(--pink); }
-.dots--cyan   { background-color: var(--cyan); }
-.dots--lime   { background-color: var(--lime); }
+.dots {
+  background-image: radial-gradient(var(--ink) 1.4px, transparent 1.6px);
+  background-size: 26px 26px;
+  overflow-x: clip;
+}
+.dots--yellow {
+  background-color: var(--yellow);
+}
+.dots--pink {
+  background-color: var(--pink);
+}
+.dots--cyan {
+  background-color: var(--cyan);
+}
+.dots--lime {
+  background-color: var(--lime);
+}
 
 /* button wiggle */
-.btn { transition: transform .12s; }
-.btn:hover { transform: translate(-3px, -3px) rotate(-1deg); }
-.btn:focus-visible { outline: 4px solid var(--ink); outline-offset: 4px; }
+.btn {
+  transition: transform 0.12s;
+}
+.btn:hover {
+  transform: translate(-3px, -3px) rotate(-1deg);
+}
+.btn:focus-visible {
+  outline: 4px solid var(--ink);
+  outline-offset: 4px;
+}
 
-@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+}
 ```
 
 **Anti-side-scroll checklist.** Apply these everywhere; the design already follows them.
+
 1. `overflow-x: hidden` on `html, body` and `overflow-x: clip` on each page's root.
 2. Every flex row that holds cards uses `flex-wrap: wrap`, and children use `flex: 1 1 <basis>` plus `min-width: 0`.
 3. No fixed pixel widths on columns. Use `min-width` with `flex: 0 0 auto` (see the leaderboard numbers).
@@ -265,6 +310,7 @@ Each button in the design that links to another artboard becomes a `<Link>` to t
 ## Step 8 — Build each screen
 
 ### 8.1 Home (`/`, yellow dots)
+
 1. **Header row:** the version pill on the left ("v0.0.1 (unstable, like us)", black with yellow text) and a "How to play" pill on the right that anchors to `#how`.
 2. **Hero:** a flex-wrap row, centred.
    - Left (`flex: 1 1 600px`): a pink Sticker "certified brain rot ™", the outlined title "EMOTIONAL / DAMAGE", and a 22px tagline with `max-width: 560px`.
@@ -276,6 +322,7 @@ Each button in the design that links to another artboard becomes a `<Link>` to t
 5. **Ticker** strip at the bottom.
 
 ### 8.2 Join (`/join`, cyan dots)
+
 1. Header with "← back to safety" linking to `/`.
 2. A centred white card (`max-width: 760px`, `--shadow-lg` at 12px, radius 32): a pink sticker, the title "Join a lobby" and the helper copy.
 3. **Code input:** a `<fieldset>` with `<legend>Lobby code</legend>` and four `<input maxlength="1">` boxes, each 92×112 with display font at 60px and uppercase text. Filled boxes are lime with a solid border; the empty box is white with a dashed border. Every box gets a visually hidden `<label>`. Behaviour: typing a letter moves focus to the next box, Backspace moves back, and pasting "BRUH" fills all four. A focused box turns yellow.
@@ -284,7 +331,9 @@ Each button in the design that links to another artboard becomes a `<Link>` to t
 6. A black note about the webcam, then two rotated stickers below the card.
 
 ### 8.3 Lobby (`/lobby/:code`, pink dots)
+
 Two columns in a flex-wrap row: left `flex: 1 1 340px`, right `flex: 2 1 520px`.
+
 1. **Code card** (yellow, `rotate(-1.5deg)`): the label "your lobby code", the code in a white box at `clamp(56px, 8vw, 96px)`, a "Copy invite link" button (black with yellow text) that copies to the clipboard and briefly reads "copied!", and a roast line.
 2. **House rules** card: segmented buttons for Rounds (3/5/10) and Countdown (3s/5s). The selected option is lime with `--shadow-sm` and carries `aria-pressed="true"`. Uncle Damage's vibe is shown as a pink pill.
 3. **The victims** card: the title plus a "3 / 5" counter, then **always 5 slots**:
@@ -293,10 +342,11 @@ Two columns in a flex-wrap row: left `flex: 1 1 340px`, right `flex: 2 1 520px`.
 4. Footer row: helper text and "Start the damage →" (lime) going to `/play/:code`. Only the host sees an enabled button; others see "waiting for host…".
 
 ### 8.4 Round (`/play/:code`, lime dots, container 1240px)
+
 1. **Top bar:** the "ROUND 2 / 5" badge (white, display 26px), a black "lobby BRUH" pill, and 5 small Avatars (44px) on the right inside an `aria-label="Players in this round"` group.
 2. **Announcer bar** (white card, flex-wrap):
    - The UncleDamage SVG at 96px.
-   - Middle (`flex: 1 1 480px; min-width: 0`): the name, a yellow "ElevenLabs voice agent · speaking" pill, and an 8-bar waveform of black 6px bars with varying heights. Animate the bars' height when "speaking" and stop the animation under reduced motion. Below sits the prompt in display font at `clamp(26px, 3.4vw, 40px)`.
+   - Middle (`flex: 1 1 480px; min-width: 0`): the name, a yellow "speaking" pill, and an 8-bar waveform of black 6px bars with varying heights. Animate the bars' height when "speaking" and stop the animation under reduced motion. Below sits the prompt in display font at `clamp(26px, 3.4vw, 40px)`.
    - Right: `Countdown`, driven by a `setInterval` from `countdown` to 0. At 0 the screen switches to a "captured!" state; that state is a UI-only stub.
 3. **Main row** (flex-wrap):
    - **Webcam panel** (`flex: 999 1 560px; min-width: 0; min-height: 460px`, dark background): a `<video autoPlay muted playsInline>` filling the panel with `object-fit: cover` and mirrored (`transform: scaleX(-1)`). Request the camera with `navigator.mediaDevices.getUserMedia({ video: true })`. If permission is denied, show the dark panel with a "camera said no" message. Overlays, all absolutely positioned: the pink "LIVE · you" pill top-left, "face locked ✓" top-right, the dashed lime face-guide SVG centred, and the yellow roast sticker bottom-left.
@@ -313,12 +363,14 @@ Two columns in a flex-wrap row: left `flex: 1 1 340px`, right `flex: 2 1 520px`.
    - The **AI vibe check** strip: black with a yellow outline pill and white quote text.
 
 ### 8.5 Leaderboard (`/play/:code/results`, yellow dots, container 1000px)
+
 1. Header: a black pill with the round and prompt name, then the outlined title "WHO GOT COOKED".
 2. **Results card:** a column header row (RANK / PLAYER / THIS ROUND / TOTAL AURA), then 5 rows. Each row is `flex-wrap: wrap` with a rank in display 34px, an Avatar 50, the name, a roast tag pill, the delta, and the total in display 28px. Number columns use `flex: 0 0 auto; min-width: 84px`, never fixed widths. First place has a pink background and `rotate(-1deg)`; last place is grey with `rotate(1deg)`; the rest are tinted yellow.
 3. **Presage receipts:** the title and a pill, then 5 award tiles (`flex: 1 1 210px`, each slightly rotated): Biggest pulse spike, Lowest HRV, Most panic breathing, Calmest (sus), and Eye contact crimes.
 4. **Footer:** an Uncle Damage roast bubble (cyan), "(prototype) final →", and "Next round in 5…" (lime). The button counts down from 5 and then navigates back to the Round screen. On the last round it goes to `/winner` instead.
 
 ### 8.6 Winner (`/play/:code/winner`, cyan dots)
+
 1. The root uses `position: relative; overflow: hidden` and holds an absolutely positioned confetti SVG (rectangles, circles and stars with ink outlines) with `pointer-events: none`.
 2. A black "game over" pill.
 3. **Champion stack:** the crown SVG (`rotate(-8deg)`, overlapping the avatar by −18px), then the 170px Avatar with a 6px border and `--shadow-lg`.
@@ -332,6 +384,7 @@ Two columns in a flex-wrap row: left `flex: 1 1 340px`, right `flex: 2 1 520px`.
 ## Step 9 — Responsive behaviour
 
 The design is built at 1280px and must work down to roughly 360px.
+
 - All rows already wrap, so at narrow widths the columns stack. Check the order: on the Round screen the webcam comes first, then the metrics, then Deep scan.
 - Below 600px:
   - Shrink the Join code boxes to 64×80 with a 44px font.
@@ -356,6 +409,7 @@ The design is built at 1280px and must work down to roughly 360px.
 ## Step 11 — Visual QA against the design
 
 Open the design link next to the running app and check each screen for:
+
 - [ ] The background colour and dot pattern
 - [ ] Border thickness (3 or 4px) and shadow offsets (4, 6, 8 or 10px)
 - [ ] Rotations on stickers and cards

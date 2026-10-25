@@ -76,14 +76,16 @@ function useRoundAudio({
   const finalStretch = left > 0 && left <= 5;
   useMusic(iPassed ? "roundPassed" : "round", {
     // Rounded so the player is not re-tuned on every 250 ms countdown tick.
-    tempo: Math.round((1 + 0.12 * elapsed + (finalStretch ? 0.08 : 0)) * 50) / 50,
+    tempo:
+      Math.round((1 + 0.12 * elapsed + (finalStretch ? 0.08 : 0)) * 50) / 50,
     intensity: iPassed ? 0.6 : Math.round((0.5 + 0.5 * elapsed) * 10) / 10,
   });
 
   // "GO" once per round, however often the screen re-renders or remounts.
   const announced = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (roundNo === undefined || left <= 0 || announced.current === roundNo) return;
+    if (roundNo === undefined || left <= 0 || announced.current === roundNo)
+      return;
     announced.current = roundNo;
     sfx.go();
   }, [roundNo, left]);
@@ -100,17 +102,32 @@ export function Round() {
   const game = useGame();
   useFollowServerPhase(game);
 
-  const { code, state, session, round, me, roster, mySubmission, iPassed, clockOffsetMs } = game;
+  const {
+    code,
+    state,
+    session,
+    round,
+    me,
+    roster,
+    mySubmission,
+    iPassed,
+    clockOffsetMs,
+  } = game;
 
   // Anchored to the server's own round deadline, not a local timer.
   const left = useServerCountdown(round?.ends_at, clockOffsetMs);
 
   useRoundAudio({
     roundNo: round?.number,
-    totalS: round ? (Date.parse(round.ends_at) - Date.parse(round.started_at)) / 1000 : 0,
+    totalS: round
+      ? (Date.parse(round.ends_at) - Date.parse(round.started_at)) / 1000
+      : 0,
     left,
     iPassed,
-    othersPassed: round ? Object.keys(round.passed).filter((id) => id !== session?.player_id).length : 0,
+    othersPassed: round
+      ? Object.keys(round.passed).filter((id) => id !== session?.player_id)
+          .length
+      : 0,
   });
 
   // Started in the lobby and kept running all game; see GameShell.
@@ -144,15 +161,30 @@ export function Round() {
   return (
     <PageShell bg="lime" maxWidth={1240} gap={16} className="page--round">
       <header className="header" style={{ gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <span className="round-badge">
-            ROUND {round?.number ?? "…"} / {state?.config.rounds_per_game ?? "…"}
+            ROUND {round?.number ?? "…"} /{" "}
+            {state?.config.rounds_per_game ?? "…"}
           </span>
           <Pill dark style={{ padding: "8px 14px", fontSize: 16 }}>
             lobby {code}
           </Pill>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+          }}
+        >
           <div
             role="group"
             aria-label="Players in this round"
@@ -160,7 +192,11 @@ export function Round() {
           >
             {roster.map((seat) => (
               <span key={seat.player.id} title={seat.player.name}>
-                <Avatar initial={seat.look.initial} color={seat.look.color} size={44} />
+                <Avatar
+                  initial={seat.look.initial}
+                  color={seat.look.color}
+                  size={44}
+                />
                 <span className="sr-only">{seat.player.name}</span>
               </span>
             ))}
@@ -169,17 +205,27 @@ export function Round() {
         </div>
       </header>
 
-      <ChunkyCard as="section" className={`announcer ${speaking ? "announcer--speaking" : ""}`}>
+      <ChunkyCard
+        as="section"
+        className={`announcer ${speaking ? "announcer--speaking" : ""}`}
+      >
         <UncleDamage className="announcer__face" />
         <div className="announcer__mid">
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <span style={{ fontWeight: 700, fontSize: 17 }}>Uncle Damage</span>
             <Pill
               thin
               bg="var(--yellow)"
               style={{ fontWeight: 600, fontSize: 13, padding: "3px 10px" }}
             >
-              ElevenLabs voice agent ·{" "}
+              {" "}
               <span className="voice-status">
                 <span hidden={!speaking}>speaking</span>
                 <span hidden={speaking}>listening</span>
@@ -197,7 +243,10 @@ export function Round() {
           {/* The generated line once it lands, with the prompt the server is actually
               scoring against underneath it. Before then the prompt is the line. */}
           {/* Keyed by the text, so the generated line pops in when it replaces the prompt. */}
-          <p className="announcer__prompt" key={round?.voice_line ?? round?.prompt ?? ""}>
+          <p
+            className="announcer__prompt"
+            key={round?.voice_line ?? round?.prompt ?? ""}
+          >
             "{round?.voice_line ?? round?.prompt ?? "…"}"
           </p>
           {round?.voice_line && (
@@ -211,9 +260,17 @@ export function Round() {
       </ChunkyCard>
 
       <div className="round__main">
-        <Webcam stream={spectra.stream} ready={spectra.ready} error={spectra.error} />
+        <Webcam
+          stream={spectra.stream}
+          ready={spectra.ready}
+          error={spectra.error}
+        />
 
-        <ChunkyCard as="aside" className="snitch" aria-labelledby="snitch-title">
+        <ChunkyCard
+          as="aside"
+          className="snitch"
+          aria-labelledby="snitch-title"
+        >
           <div className="snitch__head">
             <h2 id="snitch-title">Presage reads</h2>
           </div>
@@ -279,7 +336,8 @@ export function Round() {
             </p>
           )}
           <p className="snitch__uplink">
-            frames sent {uploader.sent} · skipped {uploader.skipped} · failed {uploader.failed}
+            frames sent {uploader.sent} · skipped {uploader.skipped} · failed{" "}
+            {uploader.failed}
             {uploader.lastError ? ` · ${uploader.lastError}` : ""}
           </p>
         </ChunkyCard>
