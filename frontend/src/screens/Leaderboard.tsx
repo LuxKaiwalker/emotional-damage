@@ -3,6 +3,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useMusic } from "../audio/hooks";
 import { sfx } from "../audio/sfx";
 import { useFollowServerPhase, useGame } from "../game";
+import { FaceHall } from "../components/FaceHall";
 import { LeaveGame } from "../components/LeaveGame";
 import { Avatar, ChunkyCard, PageShell, Pill } from "../components/ui";
 
@@ -122,6 +123,8 @@ export function Leaderboard() {
           })}
         </ol>
       </ChunkyCard>
+
+      <FaceHall round={round} players={state?.players ?? {}} myId={game.session?.player_id} />
 
       <section aria-labelledby="receipts" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="receipts__head">

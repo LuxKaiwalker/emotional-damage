@@ -11,6 +11,11 @@ import type {
 // Default to relative paths so the vite dev proxy handles it; override for a deployed build.
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
+/** Where a stored camera frame is served from, by its submission id. */
+export function mediaUrl(submissionId: string): string {
+  return `${API_BASE}/media/${encodeURIComponent(submissionId)}`;
+}
+
 export class ApiError extends Error {
   status: number;
 

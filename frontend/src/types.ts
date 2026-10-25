@@ -56,6 +56,16 @@ export interface RoundScore {
   points: number;
 }
 
+/** One of a round's best faces: a passing frame, ranked by the processor's confidence. */
+export interface Highlight {
+  player_id: string;
+  /** The frame itself; see `mediaUrl`. Gone once the server's media TTL reaps it. */
+  submission_id: string;
+  label: string;
+  accuracy_points: number;
+  place: number;
+}
+
 export interface Round {
   number: number;
   prompt: string;
@@ -71,6 +81,8 @@ export interface Round {
   scores: Record<string, RoundScore>;
   /** player_id -> points gained, filled in when the server ends the round. */
   points_awarded: Record<string, number>;
+  /** Top faces by accuracy, best first, at most three. Filled in when the round ends. */
+  highlights: Highlight[];
   /**
    * Uncle Damage's line for this round, and the id of its audio. Both start null and are
    * patched in once generation finishes, so treat them as arriving late. `audio_id` stays

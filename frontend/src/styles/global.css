@@ -164,6 +164,31 @@ button, input { font-family: inherit; color: var(--ink); }
 .face--sm { width: min(96px, 10vh); height: min(96px, 10vh); }
 .home__faces--left .face--sm { transform: rotate(14deg); margin-left: 70px; }
 .home__faces--right .face--sm { transform: rotate(-12deg); margin-right: 90px; }
+/* Hover a hero face for its reaction GIF. The popup opens toward the title, not off the page. */
+.peek { position: relative; display: block; cursor: pointer; border-radius: 50%; outline: none; }
+.peek:focus-visible .face { filter: drop-shadow(0 0 0 var(--ink)) drop-shadow(4px 4px 0 var(--white)); }
+.peek .face { transition: scale var(--dur-med) var(--ease-snappy); }
+.peek[aria-expanded="true"] .face { scale: 1.08; }
+.peek__pop {
+  position: absolute; z-index: 20; top: 50%; width: 220px; translate: 0 -50%;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: var(--white); border: var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md);
+  padding: 10px 10px 12px; pointer-events: none;
+}
+.peek--left .peek__pop  { left: calc(100% + 14px); rotate: 3deg; }
+.peek--right .peek__pop { right: calc(100% + 14px); rotate: -3deg; }
+/* the speech-bubble tail, pointing back at the face */
+.peek__pop::before {
+  content: ""; position: absolute; top: 50%; width: 18px; height: 18px; translate: 0 -50%; rotate: 45deg;
+  background: var(--white); border: var(--border);
+}
+.peek--left .peek__pop::before  { left: -12px; border-top-color: transparent; border-right-color: transparent; }
+.peek--right .peek__pop::before { right: -12px; border-bottom-color: transparent; border-left-color: transparent; }
+.peek__gif { position: relative; display: block; width: 100%; height: auto; max-height: 200px; object-fit: cover; border: var(--border-thin); border-radius: var(--r-sm); background: var(--tint-yellow); min-height: 120px; }
+.peek__label {
+  position: relative; font-family: var(--font-display); font-size: 22px; line-height: 1; text-transform: uppercase;
+  background: var(--yellow); border: var(--border-thin); border-radius: var(--r-pill); padding: 4px 14px; rotate: -2deg;
+}
 .home__actions { display: flex; flex-wrap: wrap; gap: 28px; padding-bottom: 10px; }
 .high-score {
   display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; max-width: 100%;
@@ -350,6 +375,51 @@ button, input { font-family: inherit; color: var(--ink); }
 .receipt__who { font-weight: 700; font-size: 19px; }
 .receipt__value { font-family: var(--font-display); font-size: 32px; line-height: 1.1; }
 .receipt__sub { font-weight: 600; font-size: 14px; }
+/* Hall of faces: the round's top three, pinned up like polaroids. */
+.facehall { display: flex; flex-direction: column; gap: 14px; }
+.facehall__grid { list-style: none; margin: 0; padding: 18px 4px 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 28px 22px; }
+.facecard {
+  position: relative; flex: 0 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 10px;
+  border: var(--border); border-radius: 10px; padding: 14px 14px 16px; box-shadow: var(--shadow-md);
+}
+/* a strip of tape holding it to the wall */
+.facecard::before {
+  content: ""; position: absolute; top: -14px; left: 50%; width: 92px; height: 26px; translate: -50% 0; rotate: -4deg;
+  background: var(--tape); opacity: .9; border: var(--border-thin); border-radius: 4px; z-index: 2;
+}
+.facecard--1 { flex-basis: 300px; }
+.facecard__frame { position: relative; }
+.facecard__photo { aspect-ratio: 1; border: var(--border); border-radius: 6px; overflow: hidden; background: var(--webcam); }
+/* Mirrored, so the face reads the way the player saw it in their own preview. */
+.facecard__photo img { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
+.facecard__photo--standin { display: flex; align-items: center; justify-content: center; background: var(--tint-yellow); }
+.facecard__standin { width: 70%; height: 70%; }
+.facecard__crown { position: absolute; top: -40px; left: -22px; width: 92px; rotate: -18deg; z-index: 3; }
+.facecard__rank {
+  position: absolute; top: 6px; right: -16px; z-index: 3; rotate: 10deg;
+  background: var(--white); border: var(--border-thin); border-radius: var(--r-pill); box-shadow: var(--shadow-sm);
+  font-family: var(--font-display); font-size: 24px; line-height: 1; padding: 6px 12px;
+}
+.facecard__stamp { position: absolute; z-index: 3; right: -26px; bottom: -22px; width: 84px; height: 84px; rotate: -12deg; display: grid; place-items: center; }
+.facecard--1 .facecard__stamp { width: 96px; height: 96px; }
+.facecard__burst { position: absolute; inset: 0; width: 100%; height: 100%; }
+.facecard__pct { position: relative; font-family: var(--font-display); font-size: 22px; line-height: 1; }
+.facecard--1 .facecard__pct { font-size: 26px; }
+.facecard__caption { display: flex; flex-direction: column; gap: 2px; text-align: center; padding-top: 2px; }
+.facecard__award { font-weight: 700; font-size: 13px; letter-spacing: .08em; }
+.facecard__name { font-family: var(--font-display); font-size: 26px; line-height: 1.05; overflow-wrap: anywhere; }
+.facecard__quip { font-weight: 600; font-size: 15px; }
+.facehall__empty {
+  display: flex; align-items: center; gap: 16px; background: var(--white); border: var(--border); border-radius: var(--r-md);
+  box-shadow: 5px 5px 0 var(--ink); padding: 14px 18px; font-weight: 600; font-size: 17px;
+}
+.facehall__empty-face { flex: 0 0 auto; width: 64px; height: 64px; }
+/* Podium order where there is room for it: second, first, third. */
+@media (min-width: 760px) {
+  .facecard--1 { order: 2; }
+  .facecard--2 { order: 1; }
+  .facecard--3 { order: 3; }
+}
 .lb__foot { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; }
 .roast-bubble { background: var(--cyan); border: var(--border); border-radius: var(--r-md); padding: 12px 18px; font-weight: 600; font-size: 17px; box-shadow: 5px 5px 0 var(--ink); flex: 1 1 380px; min-width: 0; }
 
@@ -407,6 +477,11 @@ button, input { font-family: inherit; color: var(--ink); }
   .face--xl, .face--lg { width: 80px; height: 80px; }
   .face--sm { width: 52px; height: 52px; }
   .home__faces--left .face--sm, .home__faces--right .face--sm { margin: 0; }
+  /* The faces sit in rows here, so the popup opens above them instead of beside. */
+  .peek .peek__pop { top: auto; bottom: calc(100% + 14px); translate: 0 0; width: 170px; }
+  .peek--left .peek__pop { left: 0; }
+  .peek--right .peek__pop { right: 0; }
+  .peek__pop::before { display: none; }
   .tilt { transform: rotate(clamp(-1deg, var(--tilt, 0deg), 1deg)) !important; }
   .action-card, .victims, .results, .modal.deepscan, .snitch, .page--round .announcer, .code-card, .join__card { padding: 20px; }
 }

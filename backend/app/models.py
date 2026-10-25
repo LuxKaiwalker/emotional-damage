@@ -86,6 +86,18 @@ class RoundScore(BaseModel):
     points: int
 
 
+class Highlight(BaseModel):
+    """One of a round's best faces: a passing frame, ranked by the processor's confidence."""
+
+    player_id: str
+    # The frame itself, served at /api/media/{submission_id} until the media TTL reaps it.
+    submission_id: str
+    label: str
+    # Copied from the player's RoundScore, so the gallery needs nothing else to rank by.
+    accuracy_points: int
+    place: int
+
+
 class Round(BaseModel):
     number: int
     prompt: str
@@ -103,6 +115,9 @@ class Round(BaseModel):
     # player_id -> points gained (the same totals, kept flat for the leaderboard).
     scores: dict[str, RoundScore] = Field(default_factory=dict)
     points_awarded: dict[str, int] = Field(default_factory=dict)
+    # The round's top faces by accuracy, best first, at most three. Picked when the round
+    # ends, alongside `scores`, so they are kept in `history` with the rest of the round.
+    highlights: list[Highlight] = Field(default_factory=list)
     # Uncle Damage's line for this round, and the id of its audio in the voice store.
     # Both start None and are patched in once generation finishes: a TTS round trip takes
     # seconds, and the round is never delayed waiting for it. `audio_id` stays None when
