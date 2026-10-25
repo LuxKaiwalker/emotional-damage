@@ -50,7 +50,10 @@ const PEEKS = {
 /** The backend requires a name of 1-32 chars on both create and join. */
 export const NAME_MAX = 32;
 
-/** This browser's best final score, as the server recorded it. Hidden when the server can't say. */
+/**
+ * This browser's best 5-round classic score, as the server recorded it. 10-round and blitz
+ * games never count. Hidden when the server can't say.
+ */
 function HighScoreBadge() {
   const [score, setScore] = useState<HighScore | null>(null);
 
@@ -71,9 +74,9 @@ function HighScoreBadge() {
   const games = score.games_played;
   return (
     <div className="high-score" role="status">
-      <span className="high-score__label">your high score</span>
+      <span className="high-score__label">your high score · 5-round classic</span>
       {score.best === null ? (
-        <span className="high-score__sub">none yet. finish a game to set one.</span>
+        <span className="high-score__sub">none yet. finish a 5-round classic game to set one.</span>
       ) : (
         <>
           <span className="high-score__num">{score.best.toLocaleString()}</span>
