@@ -5,12 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import frames, rooms, vitals, voice, ws
+from app.api import frames, highscores as highscores_api, rooms, vitals, voice, ws
 from app.api.deps import FrameQueueDep, RoomStoreDep, SettingsDep
 from app.capture.media import MediaStore
 from app.capture.queue import FrameQueue
 from app.config import Settings, get_settings
 from app.game.engine import GameEngine
+from app.game.highscores import HighScoreStore
 from app.game.hub import ConnectionManager
 from app.game.store import InMemoryRoomStore
 from app.game.voice import VoiceStore, VoiceStudio
@@ -28,7 +29,8 @@ async def lifespan(app: FastAPI):
     # Audio lives beside the frames so one MEDIA_DIR is all a deployment has to mount.
     voice_store = VoiceStore(settings.media_dir / "voice", settings.voice_ttl_seconds)
     studio = VoiceStudio(voice_store, settings)
-    engine = GameEngine(store, hub, settings, voice=studio)
+    highscores = HighScoreStore(settings.highscores_path or settings.media_dir / "highscores.json")
+    engine = GameEngine(store, hub, settings, voice=studio, highscores=highscores)
     queue = FrameQueue(
         engine=engine,
         media=media,
@@ -41,6 +43,7 @@ async def lifespan(app: FastAPI):
     app.state.store = store
     app.state.hub = hub
     app.state.engine = engine
+    app.state.highscores = highscores
     app.state.frames = queue
     app.state.voice_store = voice_store
     app.state.voice = studio
@@ -82,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vitals.router)
     app.include_router(voice.router)
     app.include_router(ws.router)
+    app.include_router(highscores_api.router)
 
     @app.get("/api/health", tags=["ops"])
     async def health(queue: FrameQueueDep, settings: SettingsDep, store: RoomStoreDep) -> dict:

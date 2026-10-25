@@ -67,6 +67,9 @@ class Settings(BaseSettings):
 
     # --- media -----------------------------------------------------------
     media_dir: Path = Path(".media")
+    # Each browser's best final score. Defaults to MEDIA_DIR/highscores.json, which the
+    # media reapers leave alone (they only delete .jpg and .mp3).
+    highscores_path: Path | None = None
     media_ttl_seconds: int = 900
 
     # --- http ------------------------------------------------------------

@@ -163,6 +163,14 @@ button, input { font-family: inherit; color: var(--ink); }
 .home__faces--left .face--sm { transform: rotate(14deg); margin-left: 70px; }
 .home__faces--right .face--sm { transform: rotate(-12deg); margin-right: 90px; }
 .home__actions { display: flex; flex-wrap: wrap; gap: 28px; padding-bottom: 10px; }
+.high-score {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; max-width: 100%;
+  margin-top: 8px; background: var(--white); border: var(--border-thin); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 8px 18px; transform: rotate(-1deg);
+}
+.high-score__label { font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: .5px; }
+.high-score__num { font-family: var(--font-display); font-size: 32px; line-height: 1; }
+.high-score__sub { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
 .action-card { flex: 1 1 420px; min-width: 0; padding: clamp(20px, 3.4vh, 32px) 32px; display: flex; flex-direction: column; gap: clamp(10px, 1.8vh, 16px); box-shadow: var(--shadow-lg); }
 .action-card h2 { margin: 0; font-family: var(--font-display); font-size: clamp(38px, 6vh, 52px); line-height: 1; }
 .action-card p { margin: 0; font-size: clamp(17px, 2.2vh, 19px); font-weight: 500; }

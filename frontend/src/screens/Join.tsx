@@ -9,7 +9,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { ChunkyButton, Header, PageShell, Sticker } from "../components/ui";
-import { saveSession } from "../session";
+import { getClientId, saveSession } from "../session";
 import askForCameraPermission from "../hooks/useCameraPermission";
 
 const LEN = 4;
@@ -74,7 +74,7 @@ export function Join() {
       // The join code is enough: the server resolves it to a room and mints this player's seat.
       const granted = await askForCameraPermission();
       if (granted) {
-        const sess = await api.joinRoom(code, name);
+        const sess = await api.joinRoom(code, name, getClientId());
         saveSession(sess, name);
         navigate(`/lobby/${sess.join_code.toUpperCase()}`);
       } else {

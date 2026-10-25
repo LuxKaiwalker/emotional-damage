@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 @router.post("", response_model=PlayerSession, status_code=201)
 async def create_room(body: CreateRoomRequest, engine: EngineDep) -> PlayerSession:
     try:
-        room, host_id = await engine.create_room(body.name)
+        room, host_id = await engine.create_room(body.name, body.client_id)
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return PlayerSession(
@@ -34,7 +34,7 @@ async def join_room(room_id: str, body: JoinRoomRequest, engine: EngineDep) -> P
     """`room_id` accepts either a full room id or the short join code."""
     try:
         room = engine.resolve(body.join_code or room_id)
-        player_id = await engine.join(room.state.room_id, body.name)
+        player_id = await engine.join(room.state.room_id, body.name, body.client_id)
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return PlayerSession(

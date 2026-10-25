@@ -143,3 +143,12 @@ export interface VitalsAccepted {
 export type FrameUploadResult =
   | { skipped: false; submission_id: string }
   | { skipped: true; reason: string };
+
+/** One browser's best final score. `best` is null until it has finished a game. */
+export interface HighScore {
+  best: number | null;
+  /** The name played under when the best was set. */
+  best_name: string | null;
+  best_at: string | null;
+  games_played: number;
+}

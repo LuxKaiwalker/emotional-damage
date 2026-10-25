@@ -31,6 +31,7 @@ from datetime import timedelta
 from typing import NamedTuple
 
 from app.config import Settings
+from app.game.highscores import HighScoreStore
 from app.game.hub import ConnectionManager
 from app.game.prompts import Prompt, pick_prompt
 from app.game.store import CodeExhausted, InMemoryRoomStore, Room, new_id
@@ -139,8 +140,11 @@ class GameEngine:
         hub: ConnectionManager,
         settings: Settings,
         voice: VoiceStudio | None = None,
+        highscores: HighScoreStore | None = None,
     ) -> None:
         self.store = store
+        # Optional: without it, finished games simply are not recorded.
+        self.highscores = highscores
         self.hub = hub
         self.settings = settings
         # Optional: without it (or without API keys) rounds simply carry no narration.
@@ -169,8 +173,10 @@ class GameEngine:
 
     # --- rooms -----------------------------------------------------------
 
-    async def create_room(self, host_name: str) -> tuple[Room, str]:
-        host = Player(id=new_id("p"), name=host_name)
+    async def create_room(
+        self, host_name: str, client_id: str | None = None
+    ) -> tuple[Room, str]:
+        host = Player(id=new_id("p"), name=host_name, client_id=client_id)
         try:
             join_code = self.store.allocate_join_code(self.settings.join_code_length)
         except CodeExhausted as exc:
@@ -197,13 +203,13 @@ class GameEngine:
         room.empty_since = utcnow()
         return room, host.id
 
-    async def join(self, room_id: str, name: str) -> str:
+    async def join(self, room_id: str, name: str, client_id: str | None = None) -> str:
         """Join at any phase. Mid-game joiners play from the next round at zero points."""
         room = self.resolve(room_id)
         async with room.lock:
             if len(room.state.players) >= self.settings.max_players_per_room:
                 raise GameError("This lobby is full. Ask the host to make room, or start your own.", 409)
-            player = Player(id=new_id("p"), name=name)
+            player = Player(id=new_id("p"), name=name, client_id=client_id)
             room.state.players[player.id] = player
             await self._publish(room, EventMessage(kind="player_joined", payload={
                 "player_id": player.id, "name": player.name,
@@ -718,6 +724,18 @@ class GameEngine:
     async def _finish_game(self, room: Room, reason: str = "rounds_complete") -> None:
         async with room.lock:
             room.state.phase = Phase.GAME_OVER
+            # A crashed game's scores are whatever it got to, not a result: not recorded.
+            if self.highscores is not None and reason != "crashed":
+                finals = [
+                    (p.client_id, p.name, p.points)
+                    for p in room.state.players.values()
+                    if p.client_id
+                ]
+                try:
+                    await self.highscores.record(finals)
+                except OSError:
+                    # A full or read-only disk must not stop the game from ending.
+                    log.exception("could not save high scores for room %s", room.state.room_id)
             await self._publish(room, EventMessage(kind="game_over", payload={
                 "game_no": room.state.game_no,
                 "reason": reason,

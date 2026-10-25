@@ -58,6 +58,9 @@ class Player(BaseModel):
     points: int = 0
     rounds_correct: int = 0
     joined_at: datetime = Field(default_factory=utcnow)
+    # The browser's long-lived id, so this game's final score can count toward its high
+    # score. Never serialized: every client sees every Player, and it is not theirs to see.
+    client_id: str | None = Field(default=None, exclude=True)
     # Server-side only bookkeeping, harmless to expose: drives the rate limiter.
     last_frame_at: datetime | None = None
     # Latest client-reported vitals (pulse, breathing, ...) and when they landed.
@@ -168,13 +171,39 @@ class EventMessage(BaseModel):
 # --- rest request / response bodies --------------------------------------
 
 
+# A random id minted by the browser (see frontend/src/session.ts). Optional, so an old
+# client still plays; its games just do not count toward a high score.
+ClientId = Field(default=None, pattern=r"^[A-Za-z0-9_-]{8,64}$")
+
+
 class CreateRoomRequest(BaseModel):
     name: str = Field(min_length=1, max_length=32)
+    client_id: str | None = ClientId
 
 
 class JoinRoomRequest(BaseModel):
     name: str = Field(min_length=1, max_length=32)
     join_code: str | None = None
+    client_id: str | None = ClientId
+
+
+class HighScore(BaseModel):
+    """One browser's best final score across every game it finished."""
+
+    best: int
+    # The name played under when the best was set; names are per game.
+    best_name: str
+    best_at: datetime
+    games_played: int
+
+
+class HighScoreResponse(BaseModel):
+    """`best` is None until this browser has finished a game."""
+
+    best: int | None = None
+    best_name: str | None = None
+    best_at: datetime | None = None
+    games_played: int = 0
 
 
 class RoundTimingRequest(BaseModel):
