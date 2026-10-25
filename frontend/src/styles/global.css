@@ -430,6 +430,16 @@ button, input { font-family: inherit; color: var(--ink); }
 
 .winner { position: relative; overflow: hidden; }
 .confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* Each scrap sits at its own share of the screen and keeps its natural proportions; the
+   wrapper is what motion.css animates. See `Confetti` in components/art.tsx.
+   Sized here rather than in the markup so the scraps still grow with a wide screen --
+   the maxima are what the old stretched SVG drew at 1440px, the minima what stays
+   readable on a phone. Height follows from each viewBox, so nothing is distorted. */
+.confetti__bit { position: absolute; display: block; line-height: 0; }
+.confetti__bit svg { display: block; width: 100%; height: auto; }
+.confetti__bit--tag { width: clamp(26px, 2.6vw, 38px); }
+.confetti__bit--dot { width: clamp(20px, 2vw, 29px); }
+.confetti__bit--star { width: clamp(30px, 4.7vw, 68px); }
 .winner__inner { position: relative; align-items: center; text-align: center; }
 .winner .facehall { width: 100%; text-align: left; }
 .champion { display: flex; flex-direction: column; align-items: center; }

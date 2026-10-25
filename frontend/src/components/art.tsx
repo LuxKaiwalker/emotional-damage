@@ -82,17 +82,81 @@ export function Crown({ className }: { className?: string }) {
   );
 }
 
+/** One scrap of confetti: its own viewBox, so nothing can stretch it out of shape. */
+type Scrap = {
+  /** Where on the screen, as a share of it, so the spread survives any viewport. */
+  left: string;
+  top: string;
+  kind: "tag" | "dot" | "star";
+  fill: string;
+  /** Static lean, applied inside the SVG -- see the note on Confetti. */
+  tilt?: number;
+};
+
+const SCRAPS: Scrap[] = [
+  { left: "7%", top: "13%", kind: "tag", fill: "#FF4FA3", tilt: 25 },
+  { left: "87%", top: "10%", kind: "tag", fill: "#FFE135", tilt: -30 },
+  { left: "17%", top: "47%", kind: "dot", fill: "#9BF04B" },
+  { left: "83%", top: "51%", kind: "dot", fill: "#FF4FA3" },
+  { left: "12%", top: "80%", kind: "tag", fill: "#FFE135", tilt: -15 },
+  { left: "90%", top: "78%", kind: "tag", fill: "#9BF04B", tilt: 40 },
+  { left: "26%", top: "9%", kind: "star", fill: "#FFE135" },
+  { left: "73%", top: "26%", kind: "star", fill: "#fff" },
+];
+
+const STAR = "M30 2l8 18 20 2-15 13 5 20-18-11-18 11 5-20-15-13 20-2z";
+
+/* No width/height here on purpose: the wrapper is sized in CSS so the scraps can grow
+   with the viewport the way the old stretched SVG did, without the distortion. */
+function Scrap({ kind, fill, tilt = 0 }: Omit<Scrap, "left" | "top">) {
+  const spin = tilt ? `rotate(${tilt} 16 10)` : undefined;
+  if (kind === "tag") {
+    return (
+      <svg viewBox="0 0 32 20" aria-hidden="true">
+        <rect x="3" y="3" width="26" height="14" rx="3" fill={fill} stroke="#111" strokeWidth="3" transform={spin} />
+      </svg>
+    );
+  }
+  if (kind === "dot") {
+    return (
+      <svg viewBox="0 0 26 26" aria-hidden="true">
+        <circle cx="13" cy="13" r="10" fill={fill} stroke="#111" strokeWidth="3" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 60 57" aria-hidden="true">
+      <path d={STAR} fill={fill} stroke="#111" strokeWidth="3" />
+    </svg>
+  );
+}
+
+/**
+ * Winner-screen confetti.
+ *
+ * Each scrap is its own small SVG dropped at a percentage of the screen, rather than one
+ * 1280x900 SVG stretched corner to corner. That stretch used `preserveAspectRatio="none"`,
+ * which scales x and y independently: harmless on a desktop roughly as wide as the viewBox,
+ * but on a phone it squeezed x to about a third while leaving y almost alone, so every
+ * piece arrived as a sliver. Percentages keep the spread; per-piece viewBoxes keep the
+ * shapes.
+ *
+ * The lean lives inside each SVG rather than on the wrapper because `drift` in motion.css
+ * animates the wrapper's CSS `rotate`, and would otherwise overwrite it. The wrappers stay
+ * direct children of `.confetti` so the existing `:nth-child` timing still applies.
+ */
 export function Confetti({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 1280 900" preserveAspectRatio="none" className={className} aria-hidden="true">
-      <rect x="90" y="120" width="26" height="14" rx="3" fill="#FF4FA3" stroke="#111" strokeWidth="3" transform="rotate(25 103 127)" />
-      <rect x="1120" y="90" width="26" height="14" rx="3" fill="#FFE135" stroke="#111" strokeWidth="3" transform="rotate(-30 1133 97)" />
-      <circle cx="220" cy="420" r="10" fill="#9BF04B" stroke="#111" strokeWidth="3" />
-      <circle cx="1060" cy="460" r="10" fill="#FF4FA3" stroke="#111" strokeWidth="3" />
-      <rect x="160" y="720" width="26" height="14" rx="3" fill="#FFE135" stroke="#111" strokeWidth="3" transform="rotate(-15 173 727)" />
-      <rect x="1150" y="700" width="26" height="14" rx="3" fill="#9BF04B" stroke="#111" strokeWidth="3" transform="rotate(40 1163 707)" />
-      <path d="M330 80l8 18 20 2-15 13 5 20-18-11-18 11 5-20-15-13 20-2z" fill="#FFE135" stroke="#111" strokeWidth="3" />
-      <path d="M940 230l8 18 20 2-15 13 5 20-18-11-18 11 5-20-15-13 20-2z" fill="#fff" stroke="#111" strokeWidth="3" />
-    </svg>
+    <div className={className} aria-hidden="true">
+      {SCRAPS.map((scrap, i) => (
+        <span
+          key={i}
+          className={`confetti__bit confetti__bit--${scrap.kind}`}
+          style={{ left: scrap.left, top: scrap.top }}
+        >
+          <Scrap kind={scrap.kind} fill={scrap.fill} tilt={scrap.tilt} />
+        </span>
+      ))}
+    </div>
   );
 }
