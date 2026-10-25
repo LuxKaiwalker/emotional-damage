@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api/client";
+import { getBand } from "../audio/engine";
 
 /**
  * Play a round's narration once, when the server says it is ready.
@@ -22,6 +23,10 @@ export function useNarration(audioId: string | null | undefined): { blocked: boo
     playedRef.current = audioId;
 
     const audio = new Audio(api.voiceUrl(audioId));
+    // The soundtrack steps back while Uncle Damage talks.
+    const band = getBand();
+    audio.onplaying = () => band.duck(true);
+    audio.onended = () => band.duck(false);
     audio.play().then(
       () => setBlocked(false),
       () => setBlocked(true), // autoplay policy, or the audio expired (404)
@@ -30,6 +35,7 @@ export function useNarration(audioId: string | null | undefined): { blocked: boo
     return () => {
       audio.pause();
       audio.src = "";
+      band.duck(false);
     };
   }, [audioId]);
 

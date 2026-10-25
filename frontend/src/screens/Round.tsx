@@ -1,5 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
+import { useMusic, useOnChange } from "../audio/hooks";
+import { sfx } from "../audio/sfx";
 import { useFollowServerPhase, useGame } from "../game";
 import { useFrameUploader } from "../hooks/useFrameUploader";
 import { useNarration } from "../hooks/useNarration";
@@ -50,6 +52,50 @@ function Webcam({
   );
 }
 
+/**
+ * The round's soundtrack, driven by the clock and the scoreboard.
+ *
+ * The music speeds up and fills out as time runs down, turns major and relieved once
+ * you have passed, and the last five seconds tick. Other players passing gets a quiet
+ * blip, so you hear the room pulling ahead of you.
+ */
+function useRoundAudio({
+  roundNo,
+  totalS,
+  left,
+  iPassed,
+  othersPassed,
+}: {
+  roundNo: number | undefined;
+  totalS: number;
+  left: number;
+  iPassed: boolean;
+  othersPassed: number;
+}) {
+  const elapsed = totalS > 0 ? Math.min(1, Math.max(0, 1 - left / totalS)) : 0;
+  const finalStretch = left > 0 && left <= 5;
+  useMusic(iPassed ? "roundPassed" : "round", {
+    // Rounded so the player is not re-tuned on every 250 ms countdown tick.
+    tempo: Math.round((1 + 0.12 * elapsed + (finalStretch ? 0.08 : 0)) * 50) / 50,
+    intensity: iPassed ? 0.6 : Math.round((0.5 + 0.5 * elapsed) * 10) / 10,
+  });
+
+  // "GO" once per round, however often the screen re-renders or remounts.
+  const announced = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (roundNo === undefined || left <= 0 || announced.current === roundNo) return;
+    announced.current = roundNo;
+    sfx.go();
+  }, [roundNo, left]);
+
+  useOnChange(left, (now, before) => {
+    if (now === 0 && before > 0) sfx.timeUp();
+    else if (now > 0 && now <= 5 && now < before) sfx.tick(now);
+  });
+  useOnChange(iPassed, (passed) => passed && sfx.pass());
+  useOnChange(othersPassed, (now, before) => now > before && sfx.otherPassed());
+}
+
 export function Round() {
   const game = useGame();
   useFollowServerPhase(game);
@@ -58,6 +104,14 @@ export function Round() {
 
   // Anchored to the server's own round deadline, not a local timer.
   const left = useServerCountdown(round?.ends_at, clockOffsetMs);
+
+  useRoundAudio({
+    roundNo: round?.number,
+    totalS: round ? (Date.parse(round.ends_at) - Date.parse(round.started_at)) / 1000 : 0,
+    left,
+    iPassed,
+    othersPassed: round ? Object.keys(round.passed).filter((id) => id !== session?.player_id).length : 0,
+  });
 
   // Started in the lobby and kept running all game; see GameShell.
   const spectra = useSpectra();

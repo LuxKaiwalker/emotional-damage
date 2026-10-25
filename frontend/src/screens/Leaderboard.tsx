@@ -1,5 +1,7 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
+import { useMusic } from "../audio/hooks";
+import { sfx } from "../audio/sfx";
 import { useFollowServerPhase, useGame } from "../game";
 import { LeaveGame } from "../components/LeaveGame";
 import { Avatar, ChunkyCard, PageShell, Pill } from "../components/ui";
@@ -26,6 +28,17 @@ export function Leaderboard() {
   useFollowServerPhase(game);
 
   const { state, round, standings, roster } = game;
+
+  useMusic("results", { intensity: 0.6 });
+  // One rising blip per row, counting the scoreboard in.
+  const rows = standings.length;
+  useEffect(() => {
+    if (!rows) return;
+    const timers = Array.from({ length: Math.min(rows, 8) }, (_, i) =>
+      window.setTimeout(() => sfx.score(i), 250 + i * 140),
+    );
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [rows, round?.number]);
   // The leave dialog no longer needs to pause anything: advancing is the server's job.
   const [, setPaused] = useState(false);
 
