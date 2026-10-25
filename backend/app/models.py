@@ -188,8 +188,10 @@ class BlitzRun(BaseModel):
     last_outcome: Literal["passed", "skipped", "expired"] | None = None
     last_points: int = 0
     last_confidence: float | None = None
-    # When this player may skip again. None means right now. The client anchors a
-    # countdown to it exactly like every other deadline.
+    # When the face on screen becomes skippable: `face_started_at` plus
+    # `blitz_skip_after_seconds`. Reset by every advance, so each face has to be looked
+    # at before it can be waved away. The client anchors a countdown to it exactly like
+    # every other deadline. None means skippable right now.
     skip_ready_at: datetime | None = None
     # Empty until the game is over; see BlitzFace.
     faces: list[BlitzFace] = Field(default_factory=list)
@@ -232,8 +234,9 @@ class GameConfig(BaseModel):
     # A UI preference, not a privacy control: every snapshot carries every Player.points
     # whatever this says, because there is no per-recipient serializer. See game/hub.py.
     blitz_live_leaderboard: bool = True
-    # Echoed so the UI can show the cooldown; not host-settable.
-    blitz_skip_cooldown_seconds: int = 5
+    # Seconds a face must be on screen before it can be skipped. Echoed so the UI can
+    # count down to it; not host-settable.
+    blitz_skip_after_seconds: int = 5
     # 100 flat plus up to 100 for accuracy. Fixed by the rules, echoed for the UI.
     max_points_per_face: int = 200
 
@@ -351,6 +354,7 @@ class BlitzSkipResponse(BaseModel):
     face_no: int
     prompt: str
     target: str
+    # When the face they just landed on becomes skippable in its turn.
     skip_ready_at: datetime
 
 

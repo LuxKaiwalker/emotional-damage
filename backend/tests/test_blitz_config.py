@@ -92,7 +92,7 @@ def test_blitz_settings_round_trip(tmp_path):
         assert config["blitz_live_leaderboard"] is False
         # Echoed for the UI, not host-settable.
         assert config["max_points_per_face"] == 200
-        assert config["blitz_skip_cooldown_seconds"] >= 0
+        assert config["blitz_skip_after_seconds"] >= 0
 
 
 def test_a_face_limit_longer_than_the_blitz_is_refused(tmp_path):

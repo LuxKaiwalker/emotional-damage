@@ -258,7 +258,7 @@ def blitz_client(tmp_path: Path, **overrides) -> TestClient:
         blitz_seconds=30,
         blitz_face_seconds=5,
         blitz_pass_confidence=0.0,
-        blitz_skip_cooldown_seconds=2,
+        blitz_skip_after_seconds=0,  # most tests want skip reachable immediately
         blitz_sequence_min_length=60,
     )
     return make_client(tmp_path, **{**base, **overrides})

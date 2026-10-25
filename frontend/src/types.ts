@@ -147,7 +147,11 @@ export interface BlitzRun {
   last_outcome: FaceOutcome | null;
   last_points: number;
   last_confidence: number | null;
-  /** When this player may skip again; null means right now. Anchor a countdown to it. */
+  /**
+   * When the face on screen becomes skippable: `face_started_at` plus
+   * `blitz_skip_after_seconds`. Re-armed by every advance, so each face has to be looked
+   * at before it can be waved away. Null means skippable right now.
+   */
   skip_ready_at: string | null;
   /** Empty until the game is over. */
   faces: BlitzFace[];
@@ -187,8 +191,8 @@ export interface GameConfig {
    * whatever this says, because the server has no per-recipient serializer.
    */
   blitz_live_leaderboard: boolean;
-  /** Echoed so the UI can show the cooldown; not host-settable. */
-  blitz_skip_cooldown_seconds: number;
+  /** Seconds a face must be on screen before it can be skipped. Not host-settable. */
+  blitz_skip_after_seconds: number;
   /** 100 flat plus up to 100 for accuracy. */
   max_points_per_face: number;
 }

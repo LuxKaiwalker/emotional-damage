@@ -55,6 +55,7 @@ export function Blitz() {
   // blitz clock, this player's current face, and their skip cooldown.
   const blitzLeft = useServerCountdown(state?.game_ends_at, clockOffsetMs);
   const faceLeft = useServerCountdown(myRun?.face_ends_at, clockOffsetMs);
+  // Per face, not per skip: a new face re-arms it, so this counts down again each time.
   const skipIn = useServerCountdown(myRun?.skip_ready_at, clockOffsetMs);
 
   // Started in the lobby and kept running all game; see GameShell.

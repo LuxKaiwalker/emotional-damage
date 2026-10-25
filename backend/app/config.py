@@ -37,8 +37,11 @@ class Settings(BaseSettings):
     # Whether players see rivals' running totals mid-blitz. A UI preference, not a privacy
     # control: every snapshot carries every Player.points regardless. See app/game/hub.py.
     blitz_live_leaderboard: bool = True
-    # Deliberately not lobby-exposed: a free skip on a cooldown is a rule, not a dial.
-    blitz_skip_cooldown_seconds: int = 5
+    # How long a face has to be on screen before its skip unlocks. Per face, not per
+    # skip: the point is to make a player actually attempt a face before moving on, so
+    # skipping can never be a faster way through the sequence than playing it.
+    # Deliberately not lobby-exposed: this is a rule of the mode, not a dial.
+    blitz_skip_after_seconds: int = 5
     # Floor on the generated sequence, so a short blitz still has plenty of faces.
     blitz_sequence_min_length: int = 90
     # How often the blitz driver sweeps for faces whose time ran out. It publishes only

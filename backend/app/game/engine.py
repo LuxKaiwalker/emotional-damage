@@ -246,7 +246,7 @@ class GameEngine:
                 blitz_face_seconds=self.settings.blitz_face_seconds,
                 blitz_pass_confidence=self.settings.blitz_pass_confidence,
                 blitz_live_leaderboard=self.settings.blitz_live_leaderboard,
-                blitz_skip_cooldown_seconds=self.settings.blitz_skip_cooldown_seconds,
+                blitz_skip_after_seconds=self.settings.blitz_skip_after_seconds,
                 max_points_per_face=BLITZ_BASE_POINTS + ACCURACY_POINTS,
             ),
         )
@@ -505,11 +505,13 @@ class GameEngine:
     # --- blitz actions ---------------------------------------------------
 
     async def skip_face(self, room_id: str, player_id: str) -> BlitzRun:
-        """Move this player past a face they cannot land. Costs no points, has a cooldown.
+        """Move this player past a face they cannot land. Costs no points.
 
-        The cooldown is the whole design: a free skip is what stops a face that simply
-        will not register from eating a player's clock, and the cooldown is what stops
-        skipping being a faster way to play than making faces.
+        Free, but not instant: a face has to have been on screen for
+        `blitz_skip_after_seconds` first (`run.skip_ready_at`). That is what stops a face
+        which simply will not register from eating a player's clock, while also stopping
+        skip-hammering from being a faster way through the sequence than playing it.
+        The wait is per face, so it resets every time a new one comes up.
         """
         room = self.require_room(room_id)
         async with room.lock:
@@ -530,10 +532,8 @@ class GameEngine:
                 raise GameError(f"Skip again in {wait}s.", status_code=429)
 
             skipped = run.face_no
+            # `_advance` arms the next face's own unlock; there is no separate cooldown.
             self._advance(room, run, now, "skipped")
-            run.skip_ready_at = now + timedelta(
-                seconds=state.config.blitz_skip_cooldown_seconds
-            )
             await self._publish(room, EventMessage(kind="blitz_face_skipped", payload={
                 "player_id": player_id, "face_no": skipped,
             }))
@@ -925,6 +925,19 @@ class GameEngine:
             ends_at = min(ends_at, room.state.game_ends_at)
         return ends_at
 
+    def _skip_unlock(self, room: Room, started_at: datetime) -> datetime:
+        """When the face that opened at `started_at` becomes skippable.
+
+        Per face, not per skip: a player has to look at a face for
+        `blitz_skip_after_seconds` before they can wave it away, so hammering skip can
+        never be a faster way through the sequence than actually playing it.
+
+        A host can set `blitz_face_seconds` below this, in which case a face expires
+        before its skip ever unlocks. That is harmless and left alone -- a face that
+        short rolls over on its own anyway, so there is nothing to escape from.
+        """
+        return started_at + timedelta(seconds=room.state.config.blitz_skip_after_seconds)
+
     def _new_run(self, room: Room, player_id: str, now: datetime) -> BlitzRun:
         entry = self._entry(room, 0)
         return BlitzRun(
@@ -935,6 +948,7 @@ class GameEngine:
             target=entry.target,
             face_started_at=now,
             face_ends_at=self._face_deadline(room, now),
+            skip_ready_at=self._skip_unlock(room, now),
         )
 
     def _advance(
@@ -948,8 +962,9 @@ class GameEngine:
     ) -> None:
         """Close this player's face and open their next one.
 
-        Deliberately does not touch `skip_ready_at`: waiting a face out must not buy you
-        a skip, and skipping sets its own cooldown afterwards.
+        Re-arms `skip_ready_at` from the new face's start, so every face -- however the
+        one before it ended -- has to be on screen for `blitz_skip_after_seconds` before
+        it can be skipped.
         """
         room.blitz_done.setdefault(run.player_id, []).append(BlitzFace(
             index=run.cursor,
@@ -974,6 +989,7 @@ class GameEngine:
         run.target = entry.target
         run.face_started_at = now
         run.face_ends_at = self._face_deadline(room, now)
+        run.skip_ready_at = self._skip_unlock(room, now)
         # The new face has had no frames yet; a stale read here would show the UI a
         # confidence belonging to the face the player just finished.
         run.submission = None
@@ -1244,7 +1260,11 @@ class GameEngine:
                     if p.client_id
                 ]
                 try:
-                    await self.highscores.record(finals, room.state.config.mode)
+                    await self.highscores.record(
+                        finals,
+                        room.state.config.mode,
+                        room.state.config.rounds_per_game,
+                    )
                 except OSError:
                     # A full or read-only disk must not stop the game from ending.
                     log.exception("could not save high scores for room %s", room.state.room_id)
