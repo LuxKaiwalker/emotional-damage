@@ -274,7 +274,14 @@ def test_a_sub_threshold_reading_does_not_spend_the_rate_limit(presage_blitz):
 
 
 def test_a_reading_for_a_face_the_player_left_pays_nothing(presage_blitz):
-    """Skipping mid-flight must not pay for the face that was abandoned."""
+    """Skipping mid-flight must not pay for the face that was abandoned.
+
+    Asserts on the *expression* rather than the target: `disappointed` is read off `sad`,
+    so "the next target is a different string" is not enough to know the held face cannot
+    satisfy it. `build_sequence` guarantees the stronger condition -- see
+    test_blitz_sequence.test_no_two_neighbours_can_be_satisfied_by_one_face -- and this
+    checks the behaviour that rule exists to produce.
+    """
     host = create_room(presage_blitz)
     room_id, player_id = host["room_id"], host["player_id"]
     state = start_blitz(presage_blitz, room_id, host)
@@ -283,10 +290,12 @@ def test_a_reading_for_a_face_the_player_left_pays_nothing(presage_blitz):
     res = presage_blitz.post(f"/api/rooms/{room_id}/skip", params={"player_id": player_id})
     assert res.status_code == 200, res.text
 
-    # A reading matching the *abandoned* face. It must not score, unless the next face
-    # happens to want the same thing -- which build_sequence guarantees it does not.
-    assert run_of(state_of(presage_blitz, room_id), host)["target"] != first
+    # The expression that satisfied the face just abandoned...
     top = next(name for name in PRESAGE_EXPRESSIONS if judge_label(name, first) == first)
+    # ...cannot satisfy the one that replaced it. That is the invariant, not a coincidence.
+    nxt = run_of(state_of(presage_blitz, room_id), host)["target"]
+    assert judge_label(top, nxt) != nxt, f"{top!r} satisfies both {first!r} and {nxt!r}"
+
     res = push(presage_blitz, room_id, player_id, scores_for(top, 95.0))
     assert res.json()["scored"] is False
     assert state_of(presage_blitz, room_id)["players"][player_id]["points"] == 0

@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass
 
 from app.config import get_settings
-from app.game.prompts import TARGET_LABELS
+from app.game.prompts import TARGET_LABELS, family
 from app.models import ProcessResult
 from app.processing.base import Processor, RoundCtx
 
@@ -43,6 +43,16 @@ STAND_INS = {"disappointed": "sad"}
 assert set(TARGET_LABELS) <= set(PRESAGE_TO_LABEL.values()) | set(STAND_INS), (
     "a prompt target has no Presage expression that can reach it"
 )
+
+# A stand-in makes two targets the same face: `disappointed` is read off `sad`, so one
+# held sad face satisfies both. The blitz sequence has to know that or it would put them
+# next to each other and hand out a free pass -- so `prompts.INDISTINGUISHABLE` must
+# cover every stand-in. Checked here, where the stand-ins are declared, because prompts
+# cannot import this module.
+assert all(
+    stood_in_for in family(reads_as)
+    for stood_in_for, reads_as in STAND_INS.items()
+), "a Presage stand-in is missing from prompts.INDISTINGUISHABLE; see build_sequence"
 
 
 @dataclass(frozen=True)

@@ -78,10 +78,14 @@ Two things about that sequence are deliberate and worth not undoing:
   `inflight`. A client holding the order could read ahead and pre-make the next face,
   which would defeat the shared sequence's entire purpose — and a 300-entry list in every
   snapshot, several times a second, is not free on a one-core box either.
-- **No two consecutive faces share a `target`.** A Presage reading stays valid for
-  `PRESAGE_MAX_AGE_MS`, and passing advances the cursor immediately, so a neighbouring
-  repeat would let one held expression pass the next face for nothing. `build_sequence`
-  guarantees it and `test_blitz_sequence.py` pins it.
+- **No two consecutive faces can be satisfied by the same expression.** A Presage reading
+  stays valid for `PRESAGE_MAX_AGE_MS`, and passing advances the cursor immediately, so a
+  neighbour the held face also satisfies would pass for nothing. Note this is stronger
+  than "a different `target`": Presage has no `disappointed` class and reads it off `sad`
+  (`STAND_INS`), so those two are one face as far as scoring is concerned.
+  `prompts.INDISTINGUISHABLE` declares such pairs, `build_sequence` keeps them apart, and
+  `presage.py` asserts at import that every stand-in of its own is covered — add a
+  stand-in without declaring it and the server refuses to start.
 
 Uncle Damage does not narrate a blitz: a Gemini line plus a TTS round trip *per face per
 player* is hundreds of calls a game, against prompts that differ per player.

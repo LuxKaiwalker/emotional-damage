@@ -46,6 +46,26 @@ PROMPTS = (
 TARGET_LABELS = tuple(dict.fromkeys(p.target for p in PROMPTS))
 
 
+# Targets no processor can tell apart, so the blitz sequence must never put two of them
+# next to each other. `processing.presage` has no `disappointed` class and reads it off
+# `sad` (its STAND_INS), which means one held sad face satisfies both targets -- and in
+# blitz, where passing advances the cursor at once and a reading stays valid for
+# PRESAGE_MAX_AGE_MS, that is two faces for the price of one.
+#
+# Declared here rather than in the processor because the sequence is built from this
+# table and `processing` imports this module, not the other way round. `presage.py`
+# asserts at import that its own stand-ins are covered by this list.
+INDISTINGUISHABLE: tuple[frozenset[str], ...] = (frozenset({"sad", "disappointed"}),)
+
+
+def family(target: str) -> frozenset[str]:
+    """The set of targets a processor would read the same way as `target`, itself included."""
+    for group in INDISTINGUISHABLE:
+        if target in group:
+            return group
+    return frozenset({target})
+
+
 def pick_prompt(round_no: int, exclude: set[str] | None = None) -> Prompt:
     """Pick a prompt, avoiding the given prompt texts when there is anything left to pick."""
     pool = [p for p in PROMPTS if not exclude or p.text not in exclude] or list(PROMPTS)
@@ -62,21 +82,23 @@ def build_sequence(length: int, rng: random.Random | None = None) -> list[Prompt
     until all of them have been -- and player 7's twelfth face is player 1's twelfth face,
     which is the only thing making an asynchronous race fair.
 
-    One invariant beyond variety: **no two consecutive entries share a `target`**. A
-    Presage reading stays valid for PRESAGE_MAX_AGE_MS after it lands, and passing a face
-    advances the cursor immediately, so a neighbouring repeat would let the same held
-    expression pass the next face for free. `rng` is for the tests; production uses the
+    One invariant beyond variety: **no two consecutive entries can be satisfied by the
+    same face**. A Presage reading stays valid for PRESAGE_MAX_AGE_MS after it lands, and
+    passing a face advances the cursor immediately, so a neighbour the held expression
+    also satisfies would pass for free. Note that is a weaker condition than "a different
+    `target`": see INDISTINGUISHABLE, where `sad` and `disappointed` are one face as far
+    as any processor is concerned. `rng` is for the tests; production uses the
     module-level `random`.
     """
     picker = rng or random
     pool: list[Prompt] = []
     sequence: list[Prompt] = []
     while len(sequence) < length:
-        previous = sequence[-1].target if sequence else None
-        index = next((i for i, p in enumerate(pool) if p.target != previous), None)
+        previous = family(sequence[-1].target) if sequence else frozenset()
+        index = next((i for i, p in enumerate(pool) if p.target not in previous), None)
         if index is None:
-            # Empty, or everything left repeats the last target. Refill and let the
-            # leftovers wait their turn: a fresh block always holds another target.
+            # Empty, or everything left reads as the last face. Refill and let the
+            # leftovers wait their turn: a fresh block always holds another family.
             block = list(PROMPTS)
             picker.shuffle(block)
             pool.extend(block)

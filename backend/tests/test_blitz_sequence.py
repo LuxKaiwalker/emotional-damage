@@ -7,7 +7,13 @@ because that one is about what reaches the wire.
 
 import random
 
-from app.game.prompts import PROMPTS, TARGET_LABELS, build_sequence
+from app.game.prompts import (
+    INDISTINGUISHABLE,
+    PROMPTS,
+    TARGET_LABELS,
+    build_sequence,
+    family,
+)
 
 
 def test_length_is_exact():
@@ -15,18 +21,41 @@ def test_length_is_exact():
         assert len(build_sequence(length, random.Random(0))) == length
 
 
-def test_no_two_neighbours_share_a_target():
-    """The load-bearing one: a held Presage reading must never pass the next face for free.
+def test_no_two_neighbours_can_be_satisfied_by_one_face():
+    """The load-bearing one: a held reading must never pass the next face for free.
 
-    See build_sequence's docstring. Several seeds, because this is a property of the
-    construction and not of one lucky shuffle.
+    Compares *families*, not raw labels -- which is the whole point. `disappointed` is
+    read off `sad` (presage.STAND_INS), so a sequence can satisfy "no repeated target"
+    and still hand out a free pass by putting those two side by side. Many seeds,
+    because this is a property of the construction, not of one lucky shuffle.
     """
-    for seed in range(50):
+    for seed in range(100):
         sequence = build_sequence(200, random.Random(seed))
-        repeats = [
-            (i, a.target) for i, (a, b) in enumerate(zip(sequence, sequence[1:])) if a.target == b.target
+        free = [
+            (i, a.target, b.target)
+            for i, (a, b) in enumerate(zip(sequence, sequence[1:]))
+            if b.target in family(a.target)
         ]
-        assert repeats == [], f"seed {seed} repeated a target at {repeats}"
+        assert free == [], f"seed {seed} gives a free pass at {free}"
+
+
+def test_the_stand_in_pair_really_is_a_hazard():
+    """Guards the test above from being vacuous.
+
+    If `sad` and `disappointed` stopped being one face, the family check would pass for
+    a reason that has nothing to do with the rule it is meant to pin.
+    """
+    assert frozenset({"sad", "disappointed"}) in INDISTINGUISHABLE
+    assert family("sad") == family("disappointed") == frozenset({"sad", "disappointed"})
+    assert family("happy") == frozenset({"happy"}), "unrelated targets stay on their own"
+
+
+def test_indistinguishable_targets_still_both_appear():
+    """Collapsing them for adjacency must not drop either from the game."""
+    sequence = build_sequence(200, random.Random(0))
+    targets = {p.target for p in sequence}
+    for group in INDISTINGUISHABLE:
+        assert group <= targets, f"{group - targets} never gets asked for"
 
 
 def test_whole_table_is_asked_before_anything_repeats():
