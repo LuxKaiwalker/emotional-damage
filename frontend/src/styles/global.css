@@ -145,13 +145,7 @@ button, input { font-family: inherit; color: var(--ink); }
 /* ---------- Home ---------- */
 
 /* Home fits one screen: content centred, sizes scale with viewport height so desktop never scrolls. */
-.page--fit {
-  min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
-  /* Clamped like everything else on this screen, so the page gives up padding before it
-     gives up fitting. Each max is what a 1080px-tall screen already used, so the design
-     is unchanged there and only short viewports tighten. */
-  padding: clamp(12px, 2.3vh, 24px) 24px clamp(18px, 3.8vh, 40px);
-}
+.page--fit { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; padding: 24px 24px 40px; }
 .page--fit > .page__inner { flex: 1; width: 100%; }
 .home__main {
   flex: 1; display: flex; flex-direction: column; justify-content: center;
@@ -159,7 +153,7 @@ button, input { font-family: inherit; color: var(--ink); }
 }
 .home__hero { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 24px; text-align: center; }
 .home__hero-copy { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1 1 600px; min-width: 0; }
-.home .title-outline { font-size: clamp(38px, min(10vw, 12.5vh), 136px); }
+.home .title-outline { font-size: clamp(56px, min(10vw, 12.5vh), 136px); }
 .home__tagline {
   margin: clamp(10px, 2vh, 20px) 0 0; padding: 10px 22px; max-width: 660px;
   font-size: clamp(18px, 2.4vh, 22px); font-weight: 600;
@@ -205,13 +199,6 @@ button, input { font-family: inherit; color: var(--ink); }
   box-shadow: var(--shadow-sm); padding: 8px 18px; transform: rotate(-1deg);
 }
 .high-score__label { font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: .5px; }
-/* Which game the number is the best at: a pill, so it reads as a qualifier on the label
-   rather than as part of the score. */
-.high-score__kind {
-  align-self: flex-start; font-weight: 700; font-size: 12px; letter-spacing: .3px;
-  background: var(--lime); border: 2px solid var(--ink); border-radius: var(--r-pill);
-  padding: 2px 9px;
-}
 .high-score__num { font-family: var(--font-display); font-size: 32px; line-height: 1; }
 .high-score__sub { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
 .action-card { flex: 1 1 420px; min-width: 0; padding: clamp(20px, 3.4vh, 32px) 32px; display: flex; flex-direction: column; gap: clamp(10px, 1.8vh, 16px); box-shadow: var(--shadow-lg); }
@@ -267,7 +254,7 @@ button, input { font-family: inherit; color: var(--ink); }
 /* Fits one screen like Home: centred vertically, sizes scale down with viewport height. */
 .lobby__main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: clamp(16px, 3vh, 32px) 0 10px; }
 .lobby__cols { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
-.lobby__left { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: clamp(12px, 2.1vh, 22px); }
+.lobby__left { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: clamp(14px, 2.4vh, 22px); }
 .code-card {
   background: var(--yellow); box-shadow: var(--shadow-md); padding: clamp(14px, 2.4vh, 22px); display: flex;
   flex-direction: column; gap: clamp(6px, 1.2vh, 10px); align-items: center; text-align: center;
@@ -282,7 +269,7 @@ button, input { font-family: inherit; color: var(--ink); }
   font-weight: 700; font-size: 16px; background: var(--ink); color: var(--yellow); border: var(--border-thin);
   border-radius: 12px; padding: 9px 18px;
 }
-.rules { border-radius: var(--r-lg); box-shadow: var(--shadow-md); padding: clamp(12px, 2vh, 20px) 20px; display: flex; flex-direction: column; gap: clamp(6px, 1.2vh, 12px); }
+.rules { border-radius: var(--r-lg); box-shadow: var(--shadow-md); padding: clamp(14px, 2.2vh, 20px) 20px; display: flex; flex-direction: column; gap: clamp(8px, 1.4vh, 12px); }
 .rules h2 { margin: 0; font-family: var(--font-display); font-size: 22px; }
 .rules__row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .rules__row > span:first-child { font-weight: 600; font-size: 16px; }
@@ -309,7 +296,7 @@ button, input { font-family: inherit; color: var(--ink); }
 .slot--empty .avatar { border-style: dashed; }
 .slot__who { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
 .slot__name { font-weight: 700; font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; }
-.slot__status { font-weight: 500; font-size: 14px; overflow-wrap: anywhere; }
+.slot__status { font-weight: 500; font-size: 14px; }
 .slot__wait { font-weight: 600; font-size: 16px; }
 .lobby__foot { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 4px; }
 .lobby__foot > span { flex: 1 1 220px; font-size: 14px; font-weight: 600; }
@@ -458,34 +445,6 @@ button, input { font-family: inherit; color: var(--ink); }
 .placings { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; width: 100%; }
 .placing { border: var(--border-thin); border-radius: 14px; padding: 10px 16px; font-weight: 700; font-size: 17px; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
-
-/* The lobby fills exactly one viewport on desktop too. The roster renders one slot per
-   `max_players` -- twelve by default, where the design was drawn for five -- so with a
-   real room it was about 1100px tall and pushed the whole page into a scroll. Cap the
-   page and let the long list scroll inside its own card, the same way `.snitch` does on
-   the round screen, rather than letting it set the page height. */
-@media (min-width: 900px) {
-  /* `min-height: 100vh` from the base rule would keep the box growing past the cap, so
-     it has to be stood down here -- the same thing `.page--round` does. */
-  .page--fit { height: 100vh; height: 100dvh; min-height: 0; }
-  /* Every link in the chain has to give up its automatic minimum, or the list's content
-     keeps the cards at full height and the cap does nothing. */
-  .page--fit > .page__inner,
-  .page--fit .lobby__main,
-  .page--fit .lobby__cols,
-  .page--fit .lobby__left,
-  .page--fit .victims { min-height: 0; }
-  /* nowrap matters as much as the stretch: in a wrapping flex container the line takes
-     the height of its tallest item, so the roster card kept its full height and simply
-     overflowed the capped column. One line, and stretch measures against the cap.
-     `.round__main` does the same thing for the same reason. */
-  .page--fit .lobby__cols { flex: 1 1 auto; align-items: stretch; flex-wrap: nowrap; }
-  .page--fit .slots { min-height: 0; overflow-y: auto; }
-  /* The same valve on the settings column: blitz shows a row more than classic, and a
-     short screen would otherwise be pushed into a page scroll by one extra line. Either
-     column scrolls inside itself before the page does. */
-  .page--fit .lobby__left { overflow-y: auto; }
-}
 
 /* The playing screens fill exactly one viewport on desktop: the webcam takes whatever height is left,
    and the announcer + Presage panel shrink with viewport height instead of pushing the page into a scroll.
