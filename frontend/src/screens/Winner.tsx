@@ -46,7 +46,8 @@ export function Winner() {
   };
 
   return (
-    <div className="winner">
+    // The deep scan opens over this screen first; the crown reveal waits for it to close.
+    <div className={`winner ${scanOpen ? "winner--held" : ""}`}>
       <Confetti className="confetti" />
       <PageShell bg="cyan" maxWidth={1060} gap={26} innerClassName="winner__inner">
         <Pill dark style={{ padding: "8px 16px", fontSize: 16 }}>
@@ -62,7 +63,7 @@ export function Winner() {
           />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", maxWidth: "100%" }}>
+        <div className="winner__title" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", maxWidth: "100%" }}>
           <h1 className="title-outline winner__name">{champion?.player.name ?? "nobody"}</h1>
           <span className="badge tilt" style={{ "--tilt": "-2deg" } as CSSProperties}>
             MOST EMOTIONALLY DAMAGED
@@ -102,7 +103,7 @@ export function Winner() {
         </ol>
 
         {error && (
-          <p className="form-error" role="alert">
+          <p className="form-error" role="alert" key={error}>
             {error}
           </p>
         )}

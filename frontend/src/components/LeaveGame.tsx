@@ -32,7 +32,7 @@ export function LeaveGame({ onOpenChange }: { onOpenChange?: (open: boolean) => 
       /* Already gone, or the room was destroyed under us: leaving locally is still correct. */
     } finally {
       clearSession();
-      navigate("/", { replace: true });
+      navigate("/", { replace: true, viewTransition: true });
     }
   };
 

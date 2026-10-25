@@ -92,7 +92,7 @@ export function Home() {
       // The room and this player's seat are minted together; persist the seat before leaving.
       const sess = await api.createRoom(trimmed, getClientId());
       saveSession(sess, trimmed);
-      navigate(`/lobby/${sess.join_code.toUpperCase()}`);
+      navigate(`/lobby/${sess.join_code.toUpperCase()}`, { viewTransition: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create a lobby");
       setBusy(false);
@@ -210,7 +210,7 @@ export function Home() {
             autoFocus
           />
           {error && (
-            <p className="form-error" role="alert">
+            <p className="form-error" role="alert" key={error}>
               {error}
             </p>
           )}
