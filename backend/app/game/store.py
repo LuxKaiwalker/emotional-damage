@@ -3,16 +3,28 @@
 Deliberately the narrowest possible surface, because this is the thing you replace first:
 to run more than one backend process, back these methods with Redis (state as JSON, plus a
 pub/sub channel per room so every process's ConnectionManager sees every broadcast).
+
+Note the server-side-only fields on `Room` -- `inflight`, `blitz_sequence`, `blitz_done` --
+are not part of `GameState` and so would need rehoming too, not just the state JSON.
 """
 
 import asyncio
 import secrets
 import string
 from dataclasses import dataclass, field
+from datetime import datetime
 
-from app.models import GameState
+from app.game.prompts import Prompt
+from app.models import BlitzFace, GameState, Submission
 
-_CODE_ALPHABET = string.ascii_uppercase + string.digits
+# Letters only: a join code gets read out loud across a room, and digits invite the
+# classic 0/O and 1/I mix-ups. 26**4 is ~457k codes, which is plenty of headroom for
+# the collision check in `allocate_join_code` to stay a formality.
+_CODE_ALPHABET = string.ascii_uppercase
+
+
+class CodeExhausted(RuntimeError):
+    """Every sampled join code was taken. Either raise JOIN_CODE_LENGTH or reap rooms."""
 
 
 def new_id(prefix: str) -> str:
@@ -31,6 +43,25 @@ class Room:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # The per-room round driver (see GameEngine._run_game).
     task: asyncio.Task | None = None
+    # When the room last had nobody connected, or None while someone is. The reaper
+    # destroys a room that has been empty longer than EMPTY_ROOM_GRACE_SECONDS.
+    empty_since: datetime | None = None
+    # This round's submissions by id, including ones a newer frame has replaced in the
+    # player's slot. A correct face must count even when its result lands after the
+    # player's next frame went up. Server-side only; reset every round.
+    inflight: dict[str, Submission] = field(default_factory=dict)
+    # Set when every connected player has passed, so the round driver can end the round
+    # early instead of sleeping out the clock. Replaced every round.
+    round_done: asyncio.Event = field(default_factory=asyncio.Event)
+    # --- blitz (PROCESSOR-agnostic; both empty outside a blitz) -----------
+    # The shared order every player walks, materialized once at game start. Server-side
+    # on purpose, like `inflight`: it is bulky, and a client holding it could read ahead
+    # and pre-make the next face, which is exactly what the shared sequence prevents.
+    blitz_sequence: list[Prompt] = field(default_factory=list)
+    # player_id -> their finished faces, accumulated while the blitz runs and copied onto
+    # BlitzRun.faces once, at game over. Keeping it off the state is what stops a blitz
+    # snapshot from growing all game. Server-side only; cleared by a restart.
+    blitz_done: dict[str, list[BlitzFace]] = field(default_factory=dict)
 
 
 class InMemoryRoomStore:
@@ -38,7 +69,19 @@ class InMemoryRoomStore:
         self._rooms: dict[str, Room] = {}
         self._by_code: dict[str, str] = {}
 
+    def allocate_join_code(self, length: int = 4, attempts: int = 64) -> str:
+        """A code no live room is using. Codes are reusable once a room is destroyed."""
+        for _ in range(attempts):
+            code = new_join_code(length)
+            if code not in self._by_code:
+                return code
+        raise CodeExhausted(f"no free {length}-letter join code after {attempts} tries")
+
     def create(self, state: GameState) -> Room:
+        if state.room_id in self._rooms:
+            raise ValueError(f"room {state.room_id} already exists")
+        if state.join_code in self._by_code:
+            raise ValueError(f"join code {state.join_code} already in use")
         room = Room(state=state)
         self._rooms[state.room_id] = room
         self._by_code[state.join_code] = state.room_id
@@ -48,11 +91,14 @@ class InMemoryRoomStore:
         return self._rooms.get(room_id)
 
     def get_by_code(self, join_code: str) -> Room | None:
-        room_id = self._by_code.get(join_code.upper())
+        room_id = self._by_code.get(join_code.strip().upper())
         return self._rooms.get(room_id) if room_id else None
 
     def all(self) -> list[Room]:
         return list(self._rooms.values())
+
+    def count(self) -> int:
+        return len(self._rooms)
 
     def delete(self, room_id: str) -> None:
         room = self._rooms.pop(room_id, None)

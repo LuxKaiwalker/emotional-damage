@@ -18,10 +18,20 @@ backend: ## run the API on :8000 with reload
 frontend: ## run the vite dev server on :5173 (proxies /api and /ws to :8000)
 	cd frontend && npm run dev
 
-dev: ## run both; ctrl-c stops both
+spectra: ## run the SmartSpectra vitals sidecar on :3001 (needs SMARTSPECTRA_API_KEY + WEB_ORIGIN)
+	cd frontend && npm run spectra
+
+dev: ## run the backend and the frontend; ctrl-c stops both
 	@trap 'kill 0' INT TERM EXIT; \
 	$(MAKE) backend & \
 	$(MAKE) frontend & \
+	wait
+
+dev-all: ## run all three, sidecar included; see frontend/src/smart-spectra/.env.example
+	@trap 'kill 0' INT TERM EXIT; \
+	$(MAKE) backend & \
+	$(MAKE) frontend & \
+	$(MAKE) spectra & \
 	wait
 
 test: ## backend test suite

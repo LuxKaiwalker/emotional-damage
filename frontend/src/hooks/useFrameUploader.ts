@@ -11,10 +11,18 @@ export interface UploaderStatus {
   lastError: string | null;
 }
 
+const EMPTY: UploaderStatus = {
+  sent: 0,
+  skipped: 0,
+  failed: 0,
+  lastSubmissionId: null,
+  lastError: null,
+};
+
 /**
  * Drives capture from the *server's* phase: frames are only sent while the backend says
- * a round is live. One upload in flight at a time -- a slow network skips the next tick
- * instead of queueing a backlog of stale frames.
+ * a round is live. Uploads are sequential -- the next tick is scheduled after the previous
+ * one settles, so a slow network can never build a backlog of stale frames.
  */
 export function useFrameUploader(opts: {
   roomId: string | null;
@@ -25,55 +33,55 @@ export function useFrameUploader(opts: {
   capture: () => Promise<Blob | null>;
 }): UploaderStatus {
   const { roomId, playerId, phase, intervalMs, enabled, capture } = opts;
-  const [status, setStatus] = useState<UploaderStatus>({
-    sent: 0,
-    skipped: 0,
-    failed: 0,
-    lastSubmissionId: null,
-    lastError: null,
-  });
+  const [status, setStatus] = useState<UploaderStatus>(EMPTY);
 
-  const inFlight = useRef(false);
-  const failures = useRef(0);
+  // Latest capture fn without making it an effect dependency: re-subscribing on every
+  // render would restart the upload loop constantly.
   const captureRef = useRef(capture);
-  captureRef.current = capture;
+  useEffect(() => {
+    captureRef.current = capture;
+  }, [capture]);
 
   useEffect(() => {
     if (!enabled || !roomId || !playerId || phase !== "round") return;
 
     let stopped = false;
+    let handle: number | undefined;
+    let failures = 0;
 
-    const tick = async () => {
-      if (stopped || inFlight.current) return;
-      inFlight.current = true;
+    const run = async () => {
+      if (stopped) return;
+
+      // Back off on sustained failure so a dead backend is not hammered every tick.
+      let delay = intervalMs;
+
       try {
         const frame = await captureRef.current();
-        if (!frame) return;
-        const res = await api.uploadFrame(roomId, playerId, frame);
-        failures.current = 0;
-        setStatus((s) =>
-          res.skipped
-            ? { ...s, skipped: s.skipped + 1, lastError: null }
-            : { ...s, sent: s.sent + 1, lastSubmissionId: res.submission_id, lastError: null },
-        );
+        if (frame) {
+          const res = await api.uploadFrame(roomId, playerId, frame);
+          failures = 0;
+          setStatus((s) =>
+            res.skipped
+              ? { ...s, skipped: s.skipped + 1, lastError: null }
+              : { ...s, sent: s.sent + 1, lastSubmissionId: res.submission_id, lastError: null },
+          );
+        }
       } catch (err) {
-        failures.current += 1;
-        setStatus((s) => ({ ...s, failed: s.failed + 1, lastError: String(err) }));
-      } finally {
-        inFlight.current = false;
+        failures += 1;
+        delay = intervalMs * Math.min(2 ** failures, 8);
+        setStatus((s) => ({ ...s, failed: s.failed + 1, lastError: err instanceof Error ? err.message : "upload failed" }));
       }
+
+      if (!stopped) handle = window.setTimeout(() => void run(), delay);
     };
 
-    // Back off on sustained failure so a dead backend is not hammered every tick.
-    const period = intervalMs * Math.min(2 ** failures.current, 8);
-    const handle = window.setInterval(() => void tick(), period);
-    void tick();
+    void run();
 
     return () => {
       stopped = true;
-      window.clearInterval(handle);
+      window.clearTimeout(handle);
     };
-  }, [enabled, roomId, playerId, phase, intervalMs, status.failed]);
+  }, [enabled, roomId, playerId, phase, intervalMs]);
 
   return status;
 }

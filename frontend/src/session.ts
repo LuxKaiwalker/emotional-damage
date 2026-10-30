@@ -1,0 +1,99 @@
+import type { PlayerSession } from "./types";
+
+/**
+ * The backend mints a `player_id` once, in the response to `POST /rooms` or `/rooms/{code}/join`,
+ * and then requires it for every other call -- the websocket closes 4403 without it. Nothing in
+ * the UI can talk to the server until that identity is persisted, so it lives here.
+ *
+ * One seat at a time: joining a second room replaces the stored session. A reload keeps the seat
+ * (the server holds the room for `empty_room_grace_seconds` after the socket drops).
+ */
+
+const KEY = "ed.session";
+
+export interface StoredSession {
+  room_id: string;
+  join_code: string;
+  player_id: string;
+  name: string;
+}
+
+function isStored(v: unknown): v is StoredSession {
+  if (!v || typeof v !== "object") return false;
+  const s = v as Record<string, unknown>;
+  return (
+    typeof s.room_id === "string" &&
+    typeof s.join_code === "string" &&
+    typeof s.player_id === "string" &&
+    typeof s.name === "string"
+  );
+}
+
+export function saveSession(s: PlayerSession, name: string): StoredSession {
+  const stored: StoredSession = {
+    room_id: s.room_id,
+    join_code: s.join_code,
+    player_id: s.player_id,
+    name,
+  };
+  try {
+    localStorage.setItem(KEY, JSON.stringify(stored));
+  } catch {
+    /* private mode / storage disabled: the session still works for this page's lifetime */
+  }
+  return stored;
+}
+
+export function loadSession(): StoredSession | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isStored(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The stored seat, but only if it belongs to the lobby in the URL. */
+export function loadSessionFor(code: string | undefined): StoredSession | null {
+  const s = loadSession();
+  if (!s) return null;
+  if (!code) return s;
+  return s.join_code.toUpperCase() === code.toUpperCase() ? s : null;
+}
+
+export function clearSession(): void {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* nothing to clear */
+  }
+}
+
+const CLIENT_KEY = "ed.client";
+let pageClientId: string | null = null;
+
+/**
+ * This browser's long-lived id, sent with every create/join so the server can keep its high
+ * score across games. Unlike the session it is never cleared. With storage blocked it lasts
+ * for this page only, which just means those games do not add up.
+ */
+export function getClientId(): string {
+  try {
+    const stored = localStorage.getItem(CLIENT_KEY);
+    if (stored && /^[A-Za-z0-9_-]{8,64}$/.test(stored)) return stored;
+  } catch {
+    /* storage blocked: fall through to a per-page id */
+  }
+  if (!pageClientId) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    pageClientId = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  try {
+    localStorage.setItem(CLIENT_KEY, pageClientId);
+  } catch {
+    /* keep the per-page id */
+  }
+  return pageClientId;
+}

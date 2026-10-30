@@ -1,6 +1,6 @@
 import time
 
-from tests.conftest import create_room, frame_files, join_room
+from tests.conftest import create_room, frame_files, join_room, wait_for
 
 
 def test_create_and_join_shares_one_authoritative_state(client):
@@ -66,6 +66,9 @@ def test_websocket_receives_snapshots_with_increasing_seq(client):
 
 
 def test_full_round_scores_every_player(client, jpeg):
+    """End to end with the real dummy processor: every frame gets judged against the
+    round's target. Whether the verdict is *correct* is the dummy's business -- the
+    deterministic point arithmetic lives in test_scoring.py."""
     host = create_room(client, "alice")
     guest = join_room(client, host["room_id"], "bob")
     room_id = host["room_id"]
@@ -98,18 +101,19 @@ def test_full_round_scores_every_player(client, jpeg):
         if len(subs) == 2 and all(s["status"] == "done" for s in subs.values()):
             break
     assert len(subs) == 2
+    target = state["round"]["target"]
     for sub in subs.values():
         assert sub["status"] == "done"
         assert sub["result"]["label"]
         assert sub["result"]["meta"]["processor"] == "dummy"
+        assert sub["correct"] is (sub["result"]["label"] == target)
 
-    # Scores are committed when the server ends the round, not when a frame is scored.
-    deadline = time.time() + 10
-    while time.time() < deadline:
-        state = client.get(f"/api/rooms/{room_id}").json()
-        if all(p["score"] > 0 for p in state["players"].values()):
-            break
-    assert all(p["score"] > 0 for p in state["players"].values())
+    # Points are committed when the server ends the round, not when a frame is scored.
+    state = wait_for(client, room_id, lambda s: s["phase"] == "game_over", timeout=15)
+    for player in state["players"].values():
+        # Only a pass scores, and a round is worth at most 200.
+        assert (player["points"] > 0) == (player["rounds_correct"] > 0)
+        assert player["points"] <= 200 * player["rounds_correct"]
 
 
 def test_game_reaches_game_over(client):

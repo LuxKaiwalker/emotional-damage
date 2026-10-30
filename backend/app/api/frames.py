@@ -2,7 +2,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, 
 
 from app.api.deps import EngineDep, FrameQueueDep, MediaDep, SettingsDep
 from app.capture.queue import FrameJob
-from app.game.engine import GameError
+from app.game.engine import AlreadyPassed, GameError
 
 router = APIRouter(prefix="/api", tags=["capture"])
 
@@ -28,37 +28,45 @@ async def upload_frame(
     simply carry on to its next tick.
     """
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(415, f"expected JPEG, got {file.content_type!r}")
+        raise HTTPException(415, "Camera frames have to be JPEG images.")
 
     data = await file.read()
     if not data:
-        raise HTTPException(400, "empty frame")
+        raise HTTPException(400, "That camera frame came through empty.")
     if len(data) > settings.max_frame_bytes:
-        raise HTTPException(413, f"frame exceeds {settings.max_frame_bytes} bytes")
+        raise HTTPException(
+            413, f"That camera frame is too big (the limit is {settings.max_frame_bytes // 1024} KB)."
+        )
 
     try:
-        submission = await engine.submit_frame(room_id, player_id, size=len(data))
+        accepted = await engine.submit_frame(room_id, player_id, size=len(data))
+    except AlreadyPassed:
+        # The client stops capturing once the snapshot says it passed; this covers the
+        # frames already on their way when that snapshot landed.
+        response.status_code = status.HTTP_200_OK
+        return {"skipped": True, "reason": "passed"}
     except GameError as exc:
         if exc.status_code == 429:
             response.status_code = status.HTTP_200_OK
             return {"skipped": True, "reason": "rate_limited"}
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    room = engine.require_room(room_id)
-    assert room.state.round is not None  # submit_frame enforces phase == ROUND
-    path = await media.write(room_id, submission.id, data)
+    submission = accepted.submission
+    path = await media.write(room_id, submission.id, data, player_id=player_id)
 
-    accepted = frames.submit(
+    queued = await frames.submit(
         FrameJob(
             room_id=room_id,
             player_id=player_id,
             submission_id=submission.id,
             round_no=submission.round_no,
-            prompt=room.state.round.prompt,
+            prompt=accepted.prompt,
+            target=accepted.target,
             path=path,
         )
     )
-    if not accepted:
+    if not queued:
+        # The queue has already settled the submission; nothing is left pending.
         response.status_code = status.HTTP_200_OK
         return {"skipped": True, "reason": "overloaded"}
 
@@ -70,5 +78,5 @@ async def get_frame(submission_id: str, media: MediaDep) -> Response:
     """Serve a stored frame. Debugging and round replay; not part of the game loop."""
     path = media.find(submission_id)
     if path is None:
-        raise HTTPException(404, "frame not found or expired")
+        raise HTTPException(404, "That frame has expired.")
     return Response(content=await media.read(path), media_type="image/jpeg")

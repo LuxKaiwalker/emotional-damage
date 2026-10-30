@@ -1,0 +1,359 @@
+/*
+ * Motion. Everything here moves like a sticker: slapped down with a little overshoot,
+ * squashed when it lands, settling back to its tilt.
+ *
+ * Rules of the file:
+ *  - Only opacity and the individual transform properties (translate, rotate, scale) are
+ *    animated, so `.tilt` and every other existing `transform` keeps working underneath.
+ *  - Entrances use `backwards` fill, never `both`: once an entrance ends it must stop
+ *    owning translate/rotate/scale, or hover and focus transitions on the same element die.
+ *  - prefers-reduced-motion turns all of it off at the bottom.
+ */
+
+/* ---------- keyframes ---------- */
+
+/* the default entrance: slapped onto the page */
+@keyframes slap {
+  from { opacity: 0; scale: 1.12; rotate: 3deg; translate: 0 -10px; }
+}
+/* dealt in from the left, like a card */
+@keyframes deal {
+  from { opacity: 0; translate: -48px 0; rotate: -4deg; }
+}
+/* dropped into a slot: stretch on the way down, squash on landing */
+@keyframes plop {
+  0%   { opacity: 0; translate: 0 -16px; scale: .92 1.1; animation-timing-function: var(--ease-in); }
+  50%  { opacity: 1; translate: 0 0; scale: 1.05 .9; animation-timing-function: var(--ease-out); }
+  78%  { scale: .98 1.03; }
+}
+/* from nothing to there, with a bounce */
+@keyframes pop {
+  from { opacity: 0; scale: .3; }
+}
+/* the value just changed: puff up and settle */
+@keyframes bump {
+  from { scale: 1.35; }
+}
+/* a heavy headline falling onto the floor */
+@keyframes jelly-drop {
+  0%   { opacity: 0; translate: 0 -70px; scale: .92 1.12; animation-timing-function: var(--ease-in); }
+  40%  { opacity: 1; translate: 0 0; scale: 1.1 .86; animation-timing-function: var(--ease-out); }
+  62%  { scale: .96 1.06; }
+  80%  { scale: 1.02 .98; }
+}
+@keyframes wiggle {
+  0%, 100% { rotate: 0deg; }
+  20% { rotate: -7deg; }
+  40% { rotate: 6deg; }
+  60% { rotate: -4deg; }
+  80% { rotate: 2deg; }
+}
+/* "no": a quick headshake */
+@keyframes shake {
+  0%, 100% { translate: 0 0; }
+  20% { translate: -8px 0; }
+  40% { translate: 7px 0; }
+  60% { translate: -5px 0; }
+  80% { translate: 3px 0; }
+}
+/* jelly: squash, stretch, settle */
+@keyframes jiggle {
+  30% { scale: 1.16 .84; }
+  50% { scale: .9 1.1; }
+  70% { scale: 1.05 .95; }
+}
+@keyframes float {
+  from { translate: 0 0; rotate: -3deg; }
+  to   { translate: 0 -10px; rotate: 3deg; }
+}
+@keyframes talk {
+  from { rotate: -4deg; scale: 1; }
+  to   { rotate: 4deg; scale: 1.05 .95; }
+}
+@keyframes breathe {
+  to { scale: 1.06; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes tick-hot {
+  from { scale: 1.6; rotate: -14deg; }
+}
+@keyframes crown-drop {
+  0%   { opacity: 0; translate: 0 -140px; rotate: 24deg; animation-timing-function: var(--ease-in); }
+  55%  { opacity: 1; translate: 0 0; rotate: 0deg; scale: 1.15 .8; animation-timing-function: var(--ease-out); }
+  75%  { translate: 0 -12px; scale: .95 1.08; }
+  100% { translate: 0 0; scale: 1; }
+}
+/* the head the crown just landed on */
+@keyframes bonk {
+  from { scale: 1.1 .86; }
+}
+@keyframes drift {
+  from { translate: 0 -6px; rotate: -12deg; }
+  to   { translate: 0 10px; rotate: 12deg; }
+}
+@keyframes page-out {
+  to { opacity: 0; scale: .92; translate: 0 28px; rotate: -1.5deg; }
+}
+
+/* ---------- route changes ---------- */
+
+/* The old screen tips over and falls away; the new one is already underneath, with its
+   own cards slapping in (below). Navigations opt in with react-router's `viewTransition`. */
+::view-transition-old(root) { animation: page-out 220ms var(--ease-in) both; }
+::view-transition-new(root) { animation: none; }
+
+/* ---------- staggered entrances ---------- */
+
+/* What lands, in order. A wrapper whose children land on their own is left out, so
+   nothing slaps in twice. */
+.page__inner > :not(.home__main, .join__main, .lobby__main, .round__main, .champion, .winner__title, .stats, .placings, .row-wrap, dialog),
+.join__main > *,
+.lobby__left > *,
+.lobby__cols > .victims,
+.round__main > *,
+.home__actions > *,
+.receipts__grid > *,
+.stats > *,
+.placings > *,
+.row-wrap > *,
+.how__steps > *,
+.blitz__board > *,
+.scan-rounds > * {
+  animation: slap var(--dur-enter) var(--ease-spring) backwards;
+  animation-delay: calc(var(--base, 0ms) + var(--i, 0) * var(--step, 70ms));
+}
+
+/* --i is the position among siblings; --base and --step are set per list. */
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(1) { --i: 0; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(2) { --i: 1; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(3) { --i: 2; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(4) { --i: 3; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(5) { --i: 4; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(6) { --i: 5; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(7) { --i: 6; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(8) { --i: 7; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(9) { --i: 8; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(10) { --i: 9; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(11) { --i: 10; }
+:is(.page__inner, .join__main, .lobby__left, .lobby__cols, .round__main, .home__actions, .slots, .results ol,
+    .receipts__grid, .stats, .placings, .row-wrap, .how__steps, .scan-rounds, .blitz__board) > :nth-child(n+12) { --i: 11; }
+
+/* Each screen's timeline: the header lands first, then the content. */
+.join__main { --base: 70ms; }
+.lobby__left { --base: 70ms; }
+.lobby__cols { --base: 70ms; }
+.round__main { --base: 140ms; }
+.blitz__board { --base: 180ms; --step: 50ms; }
+.how__steps, .scan-rounds { --base: 120ms; --step: 60ms; }
+
+/* ---------- Home: the one big moment ---------- */
+
+.home .title-outline {
+  transform-origin: 50% 100%;
+  animation: jelly-drop 500ms 60ms var(--ease-out) backwards;
+}
+.home__tagline { animation: slap var(--dur-enter) 240ms var(--ease-spring) backwards; }
+.high-score { animation: slap var(--dur-enter) 320ms var(--ease-spring) backwards; }
+.home__actions { --base: 300ms; --step: 90ms; }
+
+/* The mascots pop in, then idle-float out of sync with each other. */
+.home .face { animation: pop var(--dur-enter) var(--ease-wobbly) backwards, float 3s ease-in-out infinite alternate; }
+.home__faces--left .face--lg  { animation-delay: 120ms, -.4s; }
+.home__faces--left .face--sm  { animation-delay: 200ms, -1.9s; animation-duration: var(--dur-enter), 2.6s; }
+.home__faces--right .face--xl { animation-delay: 160ms, -1.2s; animation-duration: var(--dur-enter), 3.4s; }
+.home__faces--right .face--sm { animation-delay: 240ms, -2.5s; animation-duration: var(--dur-enter), 2.8s; }
+
+/* The reaction GIF bursts out of the face. */
+.peek__pop { animation: pop 320ms var(--ease-wobbly) backwards; }
+.peek--left .peek__pop  { transform-origin: 0 50%; }
+.peek--right .peek__pop { transform-origin: 100% 50%; }
+
+/* The two choices tip the other way when you point at them. */
+@media (hover: hover) {
+  .action-card { transition: rotate var(--dur-med) var(--ease-snappy), translate var(--dur-med) var(--ease-snappy); }
+  .action-card:hover { rotate: calc(var(--tilt, 0deg) * -2); translate: 0 -4px; }
+}
+
+/* ---------- buttons and links ---------- */
+
+/* Hover lifts off the shadow, press sinks into it, release bounces back. The shadow grows
+   and shrinks by exactly the lift, so its corner stays put like it's printed on the page. */
+:is(.btn, .pill-link, .sound-toggle) {
+  transition:
+    translate var(--dur-fast) var(--ease-snappy),
+    rotate var(--dur-fast) var(--ease-snappy),
+    scale var(--dur-fast) var(--ease-snappy),
+    box-shadow var(--dur-fast) var(--ease-snappy);
+}
+:is(.btn, .pill-link):hover:not(:disabled) { translate: -3px -3px; rotate: -1deg; }
+:is(.chunky-btn, .pill-link):hover:not(:disabled) {
+  box-shadow: calc(var(--sh) + 3px) calc(var(--sh) + 3px) 0 var(--ink);
+}
+:is(.btn, .pill-link):active:not(:disabled) { translate: 3px 3px; rotate: 0deg; scale: 1.02 .96; transition-duration: 60ms; }
+:is(.chunky-btn, .pill-link):active:not(:disabled) {
+  box-shadow: calc(var(--sh) - 3px) calc(var(--sh) - 3px) 0 var(--ink);
+}
+
+/* "copied!": a jelly wobble so the label change reads as a confirmation */
+.copy-btn--done { animation: jiggle 420ms var(--ease-out); }
+
+/* lobby toggles: the option you picked pops in */
+.rounds-pick__opt, .seg button { transition: scale var(--dur-fast) var(--ease-snappy); }
+.rounds-pick__opt:active, .seg button:active:not(:disabled) { scale: .88; transition-duration: 60ms; }
+:is(.rounds-pick__opt, .seg button)[aria-pressed="true"] { animation: pop 380ms var(--ease-wobbly); }
+/* a blitz pays out several times a round, so the totals that move say so */
+.blitz__count { display: inline-block; animation: bump 380ms var(--ease-spring); }
+
+/* a host's change lands on every screen at once, so the value itself bumps */
+.rules__vibe { animation: bump 380ms var(--ease-spring); }
+
+/* sound toggle: squash on press, and the speaker waves (or the cross) pop back in */
+.sound-toggle:active { translate: 2px 2px; scale: 1.06 .9; box-shadow: 2px 2px 0 var(--ink); transition-duration: 60ms; }
+.sound-toggle__glyph { transform-box: fill-box; transform-origin: 0 50%; animation: pop 360ms var(--ease-wobbly); }
+
+/* ---------- inputs ---------- */
+
+.name-input, .join__tag input {
+  transition: translate var(--dur-fast) var(--ease-snappy), box-shadow var(--dur-fast) var(--ease-snappy);
+}
+.name-input:focus-visible, .join__tag input:focus-visible { translate: -2px -2px; box-shadow: 6px 6px 0 var(--ink); }
+
+/* code boxes: the focused one leans in, a typed letter lands with a squash */
+.cell { transition: rotate var(--dur-fast) var(--ease-snappy), translate var(--dur-fast) var(--ease-snappy); }
+.cell:focus { rotate: -3deg; translate: 0 -3px; }
+.cell--filled { animation: plop 380ms var(--ease-out) backwards; }
+
+/* every new error shakes its head (the message is keyed, so each new one replays it) */
+.form-error { animation: shake 380ms var(--ease-out); }
+
+/* ---------- modals ---------- */
+
+/* Open: springs up from a little tilted. Close: drops away fast.
+   The exit needs the dialog kept in the top layer until it finishes (`overlay`); where the
+   browser can't do that it would flash in the page flow instead, so it simply closes. */
+.modal[open] {
+  opacity: 1; scale: 1; translate: 0 0; rotate: 0deg;
+  transition:
+    opacity 200ms var(--ease-out),
+    scale var(--dur-enter) var(--ease-spring),
+    translate var(--dur-enter) var(--ease-spring),
+    rotate var(--dur-enter) var(--ease-spring);
+}
+.modal[open]::backdrop { opacity: 1; transition: opacity 200ms var(--ease-out); }
+@starting-style {
+  .modal[open] { opacity: 0; scale: .7; translate: 0 30px; rotate: -4deg; }
+  .modal[open]::backdrop { opacity: 0; }
+}
+@supports (overlay: auto) {
+  .modal, .modal::backdrop {
+    opacity: 0;
+    transition-property: opacity, scale, translate, rotate, overlay, display;
+    transition-duration: 180ms;
+    transition-timing-function: var(--ease-in);
+    transition-behavior: allow-discrete;
+  }
+  .modal { scale: .9; translate: 0 18px; }
+}
+/* the mascot on top says hi */
+.modal__face { animation: wiggle 480ms 180ms var(--ease-out) backwards; }
+
+/* ---------- Lobby ---------- */
+
+.code-card__code { animation: pop var(--dur-enter) 160ms var(--ease-wobbly) backwards; }
+/* players drop into their seats; late joiners land the moment they arrive */
+.slots { --base: 220ms; --step: 45ms; }
+.slots > * { animation: plop 420ms var(--ease-out) backwards; animation-delay: calc(var(--base) + var(--i, 0) * var(--step)); }
+.victims__count { display: inline-block; animation: bump 380ms var(--ease-spring); }
+
+/* ---------- Round ---------- */
+
+/* Uncle Damage bobs along while he talks. */
+.announcer--speaking .announcer__face { animation: talk 340ms ease-in-out infinite alternate; }
+.announcer__prompt { transform-origin: 0 50%; animation: slap var(--dur-med) var(--ease-spring) backwards; }
+
+/* The countdown number is keyed by the second, so every tick replays this. */
+.countdown__num { animation: bump var(--dur-med) var(--ease-spring); }
+.countdown--hot .countdown__num { animation: tick-hot 380ms var(--ease-wobbly); }
+.countdown--hot { animation: wiggle 380ms var(--ease-out); }
+.countdown--done .countdown__num { animation: pop 420ms var(--ease-wobbly); }
+
+.webcam video { animation: fade-in var(--dur-med) var(--ease-out); }
+
+/* verdicts and points bump when they change (keyed in the markup) */
+.metric__value { transform-origin: 0 50%; animation: bump var(--dur-med) var(--ease-spring); }
+.aura-box > div:last-child { animation: bump 380ms var(--ease-wobbly); }
+
+/* the meter fill slides rather than resizing, so it stays on the compositor */
+.meter__fill { transition: transform var(--dur-enter) var(--ease-spring); }
+
+/* ---------- Leaderboard ---------- */
+
+/* Rows are dealt in on the same beat as the scoreboard blips (Leaderboard.tsx: 250 ms + 140 ms per row). */
+.results ol { --base: 250ms; --step: 140ms; }
+.results ol > * { animation: deal 420ms var(--ease-spring) backwards; animation-delay: calc(var(--base) + var(--i, 0) * var(--step)); }
+/* first place does a little dance once it has landed */
+.results ol > :first-child {
+  animation: deal 420ms var(--ease-spring) backwards, wiggle 480ms var(--ease-out);
+  animation-delay: var(--base), calc(var(--base) + 420ms);
+}
+.receipts__grid { --base: 420ms; --step: 80ms; }
+/* The polaroids are slapped onto the wall after the scoreboard, best face last for the drumroll. */
+.facehall { --hall: 700ms; }
+.winner .facehall { --hall: 1300ms; }
+.facehall__grid > * { animation: plop 520ms var(--ease-out) backwards; animation-delay: calc(var(--hall) + var(--i, 0) * 160ms); }
+.facehall__grid > .facecard--1 {
+  --i: 2; animation: plop 520ms var(--ease-out) backwards, wiggle 480ms var(--ease-out);
+  animation-delay: calc(var(--hall) + 320ms), calc(var(--hall) + 840ms);
+}
+.facehall__grid > .facecard--2 { --i: 0; }
+.facehall__grid > .facecard--3 { --i: 1; }
+.facecard__crown { transform-origin: 50% 100%; animation: crown-drop 500ms calc(var(--hall) + 720ms) var(--ease-out) backwards; }
+.lb__next { display: inline-block; animation: breathe 900ms ease-in-out infinite alternate; }
+
+/* ---------- Winner: the crown drops onto the champion ---------- */
+
+.crown { transform-origin: 50% 100%; animation: crown-drop 500ms 260ms var(--ease-out) backwards; }
+.champion .avatar {
+  animation: pop 420ms var(--ease-wobbly) backwards, bonk 380ms var(--ease-wobbly);
+  animation-delay: 80ms, 535ms; /* the bonk lands with the crown */
+}
+.winner__name { transform-origin: 50% 100%; animation: jelly-drop 500ms 620ms var(--ease-out) backwards; }
+.winner__title .badge { animation: slap var(--dur-enter) 820ms var(--ease-spring) backwards; }
+.stats { --base: 900ms; }
+.placings { --base: 1060ms; --step: 60ms; }
+.row-wrap { --base: 1180ms; --step: 80ms; }
+
+/* The deep scan opens on top of this screen first, so the reveal is held until it closes. */
+.winner--held :is(.winner__inner, .confetti) * { animation-play-state: paused; }
+
+.confetti > * {
+  transform-box: fill-box; transform-origin: center;
+  animation: pop 420ms var(--ease-wobbly) backwards, drift 3.2s ease-in-out infinite alternate;
+}
+.confetti > :nth-child(odd)  { animation-delay: 560ms, -1.1s; }
+.confetti > :nth-child(even) { animation-delay: 620ms, -2.3s; animation-direction: normal, alternate-reverse; }
+.confetti > :nth-child(3n)   { animation-delay: 680ms, -.4s; animation-duration: 420ms, 2.6s; }
+
+/* ---------- reduced motion: everything above, off ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  :is(.btn, .pill-link):hover:not(:disabled), :is(.btn, .pill-link, .sound-toggle):active:not(:disabled),
+  .action-card:hover, .cell:focus, .name-input:focus-visible, .join__tag input:focus-visible {
+    translate: none; rotate: none; scale: none;
+  }
+}

@@ -2,14 +2,28 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import EngineDep
 from app.game.engine import GameError
-from app.models import CreateRoomRequest, GameState, JoinRoomRequest, PlayerSession
+from app.models import (
+    BlitzConfigRequest,
+    BlitzSkipResponse,
+    CreateRoomRequest,
+    GameConfig,
+    GameMode,
+    GameState,
+    JoinRoomRequest,
+    LeaveRoomResponse,
+    PlayerSession,
+    RoundTimingRequest,
+)
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
 
 @router.post("", response_model=PlayerSession, status_code=201)
 async def create_room(body: CreateRoomRequest, engine: EngineDep) -> PlayerSession:
-    room, host_id = await engine.create_room(body.name)
+    try:
+        room, host_id = await engine.create_room(body.name, body.client_id)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return PlayerSession(
         room_id=room.state.room_id,
         join_code=room.state.join_code,
@@ -22,8 +36,8 @@ async def create_room(body: CreateRoomRequest, engine: EngineDep) -> PlayerSessi
 async def join_room(room_id: str, body: JoinRoomRequest, engine: EngineDep) -> PlayerSession:
     """`room_id` accepts either a full room id or the short join code."""
     try:
-        room = engine.resolve(room_id)
-        player_id = await engine.join(room.state.room_id, body.name)
+        room = engine.resolve(body.join_code or room_id)
+        player_id = await engine.join(room.state.room_id, body.name, body.client_id)
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return PlayerSession(
@@ -50,3 +64,105 @@ async def start_game(room_id: str, player_id: str, engine: EngineDep) -> dict[st
     except GameError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"status": "started"}
+
+
+@router.post("/{room_id}/rounds", status_code=200)
+async def set_rounds(
+    room_id: str, player_id: str, rounds: int, engine: EngineDep
+) -> dict[str, int]:
+    """Host only, in the lobby: how many rounds the next game plays (5 or 10)."""
+    try:
+        await engine.set_rounds(room_id, player_id, rounds)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {"rounds_per_game": rounds}
+
+
+@router.post("/{room_id}/config", response_model=GameConfig)
+async def set_round_timing(
+    room_id: str, player_id: str, body: RoundTimingRequest, engine: EngineDep
+) -> GameConfig:
+    """Host only, in the lobby: round 1's length and how much shorter each later round is."""
+    try:
+        return await engine.set_round_timing(
+            room_id, player_id, body.round_seconds, body.round_decrement_seconds
+        )
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{room_id}/mode", response_model=GameConfig)
+async def set_mode(
+    room_id: str, player_id: str, mode: GameMode, engine: EngineDep
+) -> GameConfig:
+    """Host only, in the lobby: which rules the next game plays by.
+
+    An unknown mode is a 422 from FastAPI's own enum validation, before the engine sees it.
+    """
+    try:
+        return await engine.set_mode(room_id, player_id, mode)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{room_id}/blitz-config", response_model=GameConfig)
+async def set_blitz_config(
+    room_id: str, player_id: str, body: BlitzConfigRequest, engine: EngineDep
+) -> GameConfig:
+    """Host only, in the lobby: the blitz clock, the per-face limit and the pass bar."""
+    try:
+        return await engine.set_blitz_config(
+            room_id,
+            player_id,
+            blitz_seconds=body.blitz_seconds,
+            blitz_face_seconds=body.blitz_face_seconds,
+            blitz_pass_confidence=body.blitz_pass_confidence,
+            blitz_live_leaderboard=body.blitz_live_leaderboard,
+        )
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{room_id}/skip", response_model=BlitzSkipResponse)
+async def skip_face(
+    room_id: str, player_id: str, engine: EngineDep
+) -> BlitzSkipResponse:
+    """Blitz only: move this player on to the next face. Free, but on a cooldown.
+
+    429 while the cooldown is running, and its detail is the player-facing sentence --
+    the client shows it as-is, like every other refusal.
+    """
+    try:
+        run = await engine.skip_face(room_id, player_id)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return BlitzSkipResponse(
+        face_no=run.face_no,
+        prompt=run.prompt,
+        target=run.target,
+        skip_ready_at=run.skip_ready_at,
+    )
+
+
+@router.post("/{room_id}/restart", status_code=200)
+async def restart_game(room_id: str, player_id: str, engine: EngineDep) -> dict[str, str]:
+    """Host only, after `game_over`: clears every score and returns the room to its lobby.
+
+    The next game is not started here -- the lobby is what lets new players in between
+    games, and the host starts it with `POST /start` as usual.
+    """
+    try:
+        await engine.restart_game(room_id, player_id)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {"status": "lobby"}
+
+
+@router.post("/{room_id}/leave", response_model=LeaveRoomResponse)
+async def leave_room(room_id: str, player_id: str, engine: EngineDep) -> LeaveRoomResponse:
+    """Give up this player's seat. The last player out destroys the room."""
+    try:
+        destroyed = await engine.leave(room_id, player_id)
+    except GameError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return LeaveRoomResponse(room_destroyed=destroyed)
