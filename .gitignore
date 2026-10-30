@@ -6,6 +6,8 @@ __pycache__/
 .pytest_cache/
 backend/.media/
 .env
+.env.*
+!.env.example
 
 # node
 node_modules/

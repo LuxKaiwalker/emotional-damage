@@ -75,7 +75,7 @@ def test_presage_is_selectable():
         ("fear", "scared", "scared"),
         ("disgust", "disgusted", "disgusted"),
         ("surprise", "surprised", "surprised"),
-        ("neutral", "happy", NO_FACE),
+        ("neutral", "happy", "neutral"),
         # Presage has no "disappointed"; sad stands in, but only when that is the ask.
         ("sad", "disappointed", "disappointed"),
         ("sad", "sad", "sad"),
@@ -345,4 +345,3 @@ def test_a_reading_for_a_face_the_player_left_pays_nothing(presage_blitz):
     res = push(presage_blitz, room_id, player_id, scores_for(top, 95.0))
     assert res.json()["scored"] is False
     assert state_of(presage_blitz, room_id)["players"][player_id]["points"] == 0
-

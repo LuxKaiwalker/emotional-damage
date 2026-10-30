@@ -276,3 +276,8 @@ is picked at random, so a processor with a known verdict is the only way to asse
 Room lifecycle and the reaper are tested against a bare `GameEngine`, no HTTP in the way.
 
 No frontend test runner — add Vitest if you want one.
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE). Third-party dependencies,
+SDKs, and services remain subject to their own licenses and terms.

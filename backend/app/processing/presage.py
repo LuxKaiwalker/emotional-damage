@@ -135,7 +135,12 @@ class PresageProcessor(Processor):
             # No face in view, the sidecar is down, or the player's browser never reached
             # it. Settle the frame as a miss rather than failing it: the next one may land.
             reason = "no_reading" if reading is None else "stale_reading"
-            return ProcessResult(score=0.0, label="--", confidence=0.0, meta={**meta, "reason": reason})
+            return ProcessResult(
+                score=0.0,
+                label=NO_FACE,
+                confidence=0.0,
+                meta={**meta, "reason": reason},
+            )
 
         return result_for(reading, ctx.target, {**meta, "reading_age_ms": round(age_s * 1000)})
 

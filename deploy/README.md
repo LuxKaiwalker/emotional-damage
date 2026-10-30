@@ -10,8 +10,6 @@ the URL. `docker-compose.yml` in the repo root is a local dev loop, not this.
 | `ed-backend.service` | `127.0.0.1:8000` | `/api/`, `/ws/`         |
 | `ed-spectra.service` | `:3001`          | `/spectra/` (optional)  |
 
-The live box is `https://emotional-damage.vxliu.com` (95.179.200.43).
-
 ## First run
 
 ```bash

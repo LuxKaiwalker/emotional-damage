@@ -27,7 +27,7 @@ PROMPTS = (
     Prompt("contempt", "Look contemptful, like someone just suggested the dumbest idea."),
     Prompt("disgusted", "Look disgusted, like you've just seen some rotten fish."),
     Prompt("disgusted", "Look disgusted, like you've just seen the worst movie of your life."),
-    Prompt("disappointed", "Look disappointed, like an Asian parent seeing their child fail an exam."),
+    Prompt("disappointed", "Look disappointed, like your big plan just fell through at the last minute."),
     Prompt("disappointed", "Look disappointed, like you just got rejected from a job that you really wanted."),
     Prompt("scared", "Look scared, like you just saw an accident happened."),
     Prompt("scared", "Look scared, like you just saw an accident."),
